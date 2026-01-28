@@ -1,0 +1,30 @@
+.sync-indicator {
+    position: absolute;
+    top: var(--space-lg);
+    left: var(--space-lg);
+    z-index: var(--z-dropdown);
+}
+
+.indicator-pill {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-full);
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.status-dot.pulse {
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.indicator-pill span {
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text-primary);
+}
