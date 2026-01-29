@@ -1,6 +1,9 @@
 .chat-panel {
     width: 100%;
     height: 100%;
+    /* Take full available height from parent */
+    min-height: 0;
+    /* Allow shrinking below content size */
     display: flex;
     flex-direction: column;
     background: var(--glass-bg);
@@ -8,6 +11,7 @@
     border-radius: var(--radius-lg);
     border: 1px solid var(--glass-border);
     overflow: hidden;
+    /* Prevent panel from growing */
 }
 
 .chat-header {
@@ -45,7 +49,11 @@
 
 .messages-container {
     flex: 1;
+    /* Grow to fill available space */
+    min-height: 0;
+    /* Critical: allows flex item to shrink below content size */
     overflow-y: auto;
+    /* Enable vertical scrolling */
     overflow-x: hidden;
     padding: var(--space-md);
     display: flex;

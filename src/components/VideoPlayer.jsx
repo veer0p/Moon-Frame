@@ -25,8 +25,12 @@ function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1
     const [showChat, setShowChat] = useState(false);
     const [feedback, setFeedback] = useState(null); // { type, value, icon }
     const [isLoading, setIsLoading] = useState(false);
+    const [showMobileVolume, setShowMobileVolume] = useState(false); // Mobile volume overlay
 
     const containerRef = useRef(null);
+    const feedbackTimeoutRef = useRef(null); // Track feedback timeout for debouncing
+    const cumulativeSeekRef = useRef(0); // Track cumulative seek amount
+    const seekResetTimeoutRef = useRef(null); // Reset cumulative seek after inactivity
     const { isInactive } = useInactivityTimer(containerRef, 3000);
     const { syncPlay, syncPause, syncSeek, syncPlaybackRate } = useVideoSync(
         videoRef,
@@ -134,6 +138,16 @@ function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1
         const handleWaiting = () => setIsLoading(true);
         const handlePlaying = () => setIsLoading(false);
 
+        // NEW: Sync isPlaying state with actual video state
+        const handlePlay = () => {
+            console.log('Video play event fired');
+            setIsPlaying(true);
+        };
+        const handlePause = () => {
+            console.log('Video pause event fired');
+            setIsPlaying(false);
+        };
+
         video.addEventListener('timeupdate', handleTimeUpdate);
         video.addEventListener('durationchange', handleDurationChange);
         video.addEventListener('progress', handleProgress);
@@ -141,6 +155,8 @@ function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1
         video.addEventListener('error', handleError);
         video.addEventListener('waiting', handleWaiting);
         video.addEventListener('playing', handlePlaying);
+        video.addEventListener('play', handlePlay);
+        video.addEventListener('pause', handlePause);
 
         return () => {
             video.removeEventListener('timeupdate', handleTimeUpdate);
@@ -150,13 +166,24 @@ function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1
             video.removeEventListener('error', handleError);
             video.removeEventListener('waiting', handleWaiting);
             video.removeEventListener('playing', handlePlaying);
+            video.removeEventListener('play', handlePlay);
+            video.removeEventListener('pause', handlePause);
         };
     }, []);
 
     const triggerFeedback = (type, value, icon) => {
+        // Clear any existing timeout to extend visibility on repeated actions
+        if (feedbackTimeoutRef.current) {
+            clearTimeout(feedbackTimeoutRef.current);
+        }
+
         setFeedback({ type, value, icon });
-        // Auto-hide feedback after animation
-        setTimeout(() => setFeedback(null), 800);
+
+        // Set new timeout and store reference
+        feedbackTimeoutRef.current = setTimeout(() => {
+            setFeedback(null);
+            feedbackTimeoutRef.current = null;
+        }, 600); // Fast response, but extends on each interaction
     };
 
     const togglePlay = () => {
@@ -172,14 +199,14 @@ function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1
             video.play().catch((error) => {
                 console.error('Play error:', error);
             });
-            setIsPlaying(true);
+            // isPlaying state will be updated by 'play' event listener
             triggerFeedback('play', null, (
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
             ));
             if (updateRoom) syncPlay();
         } else {
             video.pause();
-            setIsPlaying(false);
+            // isPlaying state will be updated by 'pause' event listener
             triggerFeedback('pause', null, (
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
             ));
@@ -193,9 +220,17 @@ function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1
         video.currentTime = time;
         setCurrentTime(time);
         if (amount) {
-            triggerFeedback('seek', `${amount > 0 ? '+' : ''}${amount}s`, (
-                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" /></svg>
-            ));
+            const isForward = amount > 0;
+            const icon = isForward ? (
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z" />
+                </svg>
+            ) : (
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z" />
+                </svg>
+            );
+            triggerFeedback('seek', `${Math.abs(amount)}s`, icon);
         }
         if (updateRoom) syncSeek(time);
     };
@@ -214,6 +249,14 @@ function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1
         if (!video) return;
         video.muted = !video.muted;
         setIsMuted(!video.muted);
+    };
+
+    const toggleMobileVolume = () => {
+        setShowMobileVolume(prev => !prev);
+        // Auto-hide after 3 seconds
+        if (!showMobileVolume) {
+            setTimeout(() => setShowMobileVolume(false), 3000);
+        }
     };
 
     const changePlaybackRate = (rate) => {
@@ -240,7 +283,7 @@ function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1
         if (!video) return;
         video.pause();
         video.currentTime = 0;
-        setIsPlaying(false);
+        // isPlaying state will be updated by 'pause' event listener
         if (updateRoom) syncPause();
     };
 
@@ -398,12 +441,21 @@ function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1
                         max={duration || 0}
                         value={currentTime}
                         onChange={(e) => handleSeek(parseFloat(e.target.value))}
+                        aria-label="Video timeline"
+                        aria-valuemin="0"
+                        aria-valuemax={duration || 0}
+                        aria-valuenow={currentTime}
+                        aria-valuetext={`${formatTime(currentTime)} of ${formatTime(duration)}`}
                     />
                 </div>
 
                 <div className="controls-row">
                     <div className="controls-left">
-                        <button className="control-btn" onClick={togglePlay}>
+                        <button
+                            className="control-btn"
+                            onClick={togglePlay}
+                            aria-label={isPlaying ? "Pause video" : "Play video"}
+                        >
                             {isPlaying ? (
                                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
                                     <path d="M6 4H10V20H6V4ZM14 4H18V20H14V4Z" fill="currentColor" />
@@ -416,7 +468,15 @@ function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1
                         </button>
 
                         <div className="volume-control">
-                            <button className="control-btn" onClick={toggleMute}>
+                            <button
+                                className="control-btn volume-btn"
+                                onClick={toggleMute}
+                                onTouchStart={(e) => {
+                                    e.preventDefault();
+                                    toggleMobileVolume();
+                                }}
+                                aria-label={isMuted ? "Unmute" : "Mute"}
+                            >
                                 {isMuted || volume === 0 ? (
                                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
                                         <path d="M16 9L22 15M22 9L16 15M11 5L6 9H2V15H6L11 19V5Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -428,6 +488,26 @@ function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1
                                     </svg>
                                 )}
                             </button>
+
+                            {/* Mobile volume overlay */}
+                            {showMobileVolume && (
+                                <div className="mobile-volume-overlay">
+                                    <div className="mobile-volume-slider-container">
+                                        <input
+                                            type="range"
+                                            className="mobile-volume-slider"
+                                            orient="vertical"
+                                            min="0"
+                                            max="1"
+                                            step="0.01"
+                                            value={isMuted ? 0 : volume}
+                                            onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                                        />
+                                        <span className="mobile-volume-value">{Math.round((isMuted ? 0 : volume) * 100)}%</span>
+                                    </div>
+                                </div>
+                            )}
+
                             <input
                                 type="range"
                                 className="volume-slider"
@@ -436,6 +516,10 @@ function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1
                                 step="0.01"
                                 value={isMuted ? 0 : volume}
                                 onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                                aria-label="Volume"
+                                aria-valuemin="0"
+                                aria-valuemax="100"
+                                aria-valuenow={Math.round((isMuted ? 0 : volume) * 100)}
                             />
                         </div>
 
@@ -492,7 +576,7 @@ function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1
                             <option value="2">2x</option>
                         </select>
 
-                        <button className="control-btn" onClick={toggleFullscreen}>
+                        <button className="control-btn" onClick={toggleFullscreen} aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}>
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
                                 <path d="M8 3H5C3.89543 3 3 3.89543 3 5V8M21 8V5C21 3.89543 20.1046 3 19 3H16M16 21H19C20.1046 21 21 20.1046 21 19V16M3 16V19C3 20.1046 3.89543 21 5 21H8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                             </svg>
@@ -500,7 +584,7 @@ function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1
                     </div>
                 </div>
             </div>
-        </div>
+        </div >
     );
 }
 

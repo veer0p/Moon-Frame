@@ -8,6 +8,13 @@ function useKeyboardShortcuts({
     onVolumeDown,
     onMute,
     onFullscreen,
+    onStop,
+    onCycleSubtitles,
+    onCycleAudio,
+    onSlowDown,
+    onSpeedUp,
+    onResetSpeed,
+    onToggleChat,
 }) {
     useEffect(() => {
         const handleKeyDown = (e) => {
@@ -88,7 +95,22 @@ function useKeyboardShortcuts({
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [onPlayPause, onSeekForward, onSeekBackward, onVolumeUp, onVolumeDown, onMute, onFullscreen]);
+    }, [
+        onPlayPause,
+        onSeekForward,
+        onSeekBackward,
+        onVolumeUp,
+        onVolumeDown,
+        onMute,
+        onFullscreen,
+        onStop,
+        onCycleSubtitles,
+        onCycleAudio,
+        onSlowDown,
+        onSpeedUp,
+        onResetSpeed,
+        onToggleChat
+    ]);
 }
 
 export default useKeyboardShortcuts;

@@ -1,5 +1,8 @@
 .watch-room {
-    min-height: 100vh;
+    height: 100vh;
+    /* Fixed height instead of min-height */
+    overflow: hidden;
+    /* Prevent page scroll */
     background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
     padding: var(--space-lg);
     display: flex;
@@ -103,10 +106,45 @@
 
 .watch-content {
     flex: 1;
+    /* Take all available space */
     display: grid;
     grid-template-columns: 1fr 350px;
     gap: var(--space-lg);
+    min-height: 0;
+    /* Critical: allows flex item to shrink */
     overflow: hidden;
+    /* Prevent content overflow */
+}
+
+/* Large desktop: Wider sidebar */
+@media (min-width: 1600px) {
+    .watch-content {
+        grid-template-columns: 1fr 400px;
+    }
+}
+
+/* Standard laptop (1440px) */
+@media (max-width: 1440px) {
+    .watch-content {
+        grid-template-columns: 1fr 320px;
+        gap: var(--space-md);
+    }
+}
+
+/* Small laptop (1366px) */
+@media (max-width: 1366px) {
+    .watch-content {
+        grid-template-columns: 1fr 300px;
+        gap: var(--space-md);
+    }
+}
+
+/* Tablet landscape: Stack but keep horizontal */
+@media (max-width: 1200px) {
+    .watch-content {
+        grid-template-columns: 1fr 280px;
+        gap: var(--space-sm);
+    }
 }
 
 /* Mobile: Stack video and sidebar vertically */
@@ -126,12 +164,15 @@
     background: #000;
     border-radius: var(--radius-lg);
     overflow: hidden;
-    min-height: 400px;
+    min-height: 0;
+    /* Allow shrinking */
+    height: 100%;
+    /* Take full grid cell height */
 }
+
 
 @media (max-width: 768px) {
     .video-section {
-        min-height: 250px;
         border-radius: var(--radius-md);
     }
 }
@@ -140,18 +181,22 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-md);
+    height: 100%;
+    /* Take full grid cell height */
+    min-height: 0;
+    /* Allow flex children to shrink */
     overflow: hidden;
+    /* Prevent sidebar from growing */
 }
 
+/* Mobile: Stack layout with proper height distribution */
 @media (max-width: 1024px) {
-    .sidebar {
-        max-height: 400px;
+    .watch-content {
+        grid-template-rows: minmax(300px, 60vh) minmax(200px, 40vh);
     }
-}
 
-/* Chat panel mobile height */
-@media (max-width: 1024px) {
-    .watch-content> :last-child {
-        max-height: 300px;
+    .sidebar {
+        height: 100%;
+        min-height: 200px;
     }
 }

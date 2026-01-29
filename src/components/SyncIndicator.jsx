@@ -1,6 +1,11 @@
 import './SyncIndicator.css';
 
 function SyncIndicator({ status }) {
+    // Don't render if status is unknown or undefined
+    if (!status || status === 'unknown') {
+        return null;
+    }
+
     const getStatusConfig = () => {
         switch (status) {
             case 'synced':
@@ -10,11 +15,12 @@ function SyncIndicator({ status }) {
             case 'disconnected':
                 return { label: 'Disconnected', color: 'var(--color-error)' };
             default:
-                return { label: 'Unknown', color: 'var(--color-text-tertiary)' };
+                return null;
         }
     };
 
     const config = getStatusConfig();
+    if (!config) return null;
 
     return (
         <div className="sync-indicator">
