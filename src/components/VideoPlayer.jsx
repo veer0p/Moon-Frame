@@ -220,7 +220,15 @@ function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1
         video.currentTime = time;
         setCurrentTime(time);
         if (amount) {
-            const isForward = amount > 0;
+            // Clear the reset timeout since user is still seeking
+            if (seekResetTimeoutRef.current) {
+                clearTimeout(seekResetTimeoutRef.current);
+            }
+
+            // Accumulate the seek amount
+            cumulativeSeekRef.current += amount;
+            const totalSeek = Math.abs(cumulativeSeekRef.current);
+            const isForward = cumulativeSeekRef.current > 0;
             const icon = isForward ? (
                 <svg viewBox="0 0 24 24" fill="currentColor">
                     <path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z" />
@@ -230,8 +238,16 @@ function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1
                     <path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z" />
                 </svg>
             );
-            triggerFeedback('seek', `${Math.abs(amount)}s`, icon);
+            // Show cumulative total
+            triggerFeedback('seek', `${totalSeek}s`, icon);
+
+            // Reset cumulative seek after 1 second of no seeking
+            seekResetTimeoutRef.current = setTimeout(() => {
+                cumulativeSeekRef.current = 0;
+                seekResetTimeoutRef.current = null;
+            }, 1000);
         }
+
         if (updateRoom) syncSeek(time);
     };
 
@@ -457,12 +473,12 @@ function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1
                             aria-label={isPlaying ? "Pause video" : "Play video"}
                         >
                             {isPlaying ? (
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                                    <path d="M6 4H10V20H6V4ZM14 4H18V20H14V4Z" fill="currentColor" />
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
                                 </svg>
                             ) : (
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                                    <path d="M8 5V19L19 12L8 5Z" fill="currentColor" />
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M8 5v14l11-7z" />
                                 </svg>
                             )}
                         </button>
@@ -478,13 +494,16 @@ function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1
                                 aria-label={isMuted ? "Unmute" : "Mute"}
                             >
                                 {isMuted || volume === 0 ? (
-                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                                        <path d="M16 9L22 15M22 9L16 15M11 5L6 9H2V15H6L11 19V5Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z" />
+                                    </svg>
+                                ) : volume < 0.5 ? (
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M7 9v6h4l5 5V4l-5 5H7z" />
                                     </svg>
                                 ) : (
-                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                                        <path d="M11 5L6 9H2V15H6L11 19V5Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                                        <path d="M15.54 8.46C16.4774 9.39764 17.0039 10.6692 17.0039 11.995C17.0039 13.3208 16.4774 14.5924 15.54 15.53" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
                                     </svg>
                                 )}
                             </button>
@@ -516,6 +535,7 @@ function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1
                                 step="0.01"
                                 value={isMuted ? 0 : volume}
                                 onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                                style={{ '--volume-percent': `${(isMuted ? 0 : volume) * 100}%` }}
                                 aria-label="Volume"
                                 aria-valuemin="0"
                                 aria-valuemax="100"
@@ -577,9 +597,15 @@ function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1
                         </select>
 
                         <button className="control-btn" onClick={toggleFullscreen} aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}>
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                                <path d="M8 3H5C3.89543 3 3 3.89543 3 5V8M21 8V5C21 3.89543 20.1046 3 19 3H16M16 21H19C20.1046 21 21 20.1046 21 19V16M3 16V19C3 20.1046 3.89543 21 5 21H8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                            </svg>
+                            {isFullscreen ? (
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" />
+                                </svg>
+                            ) : (
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
+                                </svg>
+                            )}
                         </button>
                     </div>
                 </div>
