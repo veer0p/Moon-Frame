@@ -18,7 +18,7 @@ function WatchRoom({ roomId: initialRoomId, videoFile, username, onLeave }) {
     const [notification, setNotification] = useState(null);
     const [isCreatingRoom, setIsCreatingRoom] = useState(false);
 
-    const { roomState, updateRoom, isConnected } = useRoom(roomCode, username);
+    const { roomState, updateRoom, isConnected } = useRoom(roomCode, username, videoFile);
     const { messages, sendMessage } = useChat(roomCode);
     const { activeUsers, userCount } = usePresence(roomCode, username);
     const { success, warning, info } = useNotifications();

@@ -1,8 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
 
 export const useChat = (roomCode) => {
     const [messages, setMessages] = useState([]);
+    const { user } = useAuth();
 
     useEffect(() => {
         if (!roomCode) return;
@@ -55,7 +57,7 @@ export const useChat = (roomCode) => {
     }, [roomCode]);
 
     const sendMessage = useCallback(async (username, text) => {
-        if (!roomCode || !text.trim()) return;
+        if (!roomCode || !text.trim() || !user) return;
 
         // Insert into database
         const { data, error } = await supabase
@@ -63,7 +65,8 @@ export const useChat = (roomCode) => {
             .insert({
                 room_code: roomCode,
                 username,
-                message: text.trim()
+                message: text.trim(),
+                user_id: user.id
             })
             .select()
             .single();
@@ -87,7 +90,7 @@ export const useChat = (roomCode) => {
         });
 
         console.log('useChat: ✅ Message broadcast sent');
-    }, [roomCode]);
+    }, [roomCode, user]);
 
     return { messages, sendMessage };
 };
