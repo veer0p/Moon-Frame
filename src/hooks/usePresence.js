@@ -1,12 +1,14 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
 
 export const usePresence = (roomCode, username) => {
     const [activeUsers, setActiveUsers] = useState([]);
     const [userCount, setUserCount] = useState(0);
+    const { user } = useAuth();
 
     useEffect(() => {
-        if (!roomCode || !username) return;
+        if (!roomCode || !username || !user) return;
 
         let heartbeatInterval;
         let channel;
@@ -18,6 +20,7 @@ export const usePresence = (roomCode, username) => {
                 .upsert({
                     room_code: roomCode,
                     username,
+                    user_id: user.id,
                     last_seen: new Date().toISOString(),
                     is_active: true
                 }, {
@@ -42,7 +45,8 @@ export const usePresence = (roomCode, username) => {
                         is_active: true
                     })
                     .eq('room_code', roomCode)
-                    .eq('username', username);
+                    .eq('username', username)
+                    .eq('user_id', user.id);
             }, 5000);
 
             // Subscribe to presence changes via Broadcast
@@ -98,6 +102,7 @@ export const usePresence = (roomCode, username) => {
                 .update({ is_active: false })
                 .eq('room_code', roomCode)
                 .eq('username', username)
+                .eq('user_id', user.id)
                 .then(() => {
                     console.log('usePresence: Marked as inactive');
                     // Broadcast presence change
@@ -109,7 +114,7 @@ export const usePresence = (roomCode, username) => {
                     });
                 });
         };
-    }, [roomCode, username]);
+    }, [roomCode, username, user]);
 
     const broadcastPresence = useCallback(async () => {
         const channel = supabase.channel(`presence-${roomCode}`);

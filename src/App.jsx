@@ -1,13 +1,30 @@
 import { useState } from 'react';
 import LandingScreen from './components/LandingScreen';
 import WatchRoom from './components/WatchRoom';
+import Login from './pages/Login';
+import Signup from './pages/Signup';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import './index.css';
 
-function App() {
+function AppContent() {
+  const { user, loading } = useAuth();
+  const [authMode, setAuthMode] = useState('login'); // 'login' | 'signup'
   const [screen, setScreen] = useState('landing'); // 'landing' | 'watch'
   const [roomId, setRoomId] = useState(null);
   const [videoFile, setVideoFile] = useState(null);
   const [username, setUsername] = useState('');
+
+  if (loading) {
+    return <div className="loading-screen">Loading...</div>;
+  }
+
+  if (!user) {
+    return authMode === 'login' ? (
+      <Login onToggleMode={() => setAuthMode('signup')} />
+    ) : (
+      <Signup onToggleMode={() => setAuthMode('login')} />
+    );
+  }
 
   const handleCreateRoom = (file, user) => {
     setRoomId(null); // Will be created in WatchRoom
@@ -47,6 +64,14 @@ function App() {
         />
       )}
     </>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 
