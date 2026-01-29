@@ -109,6 +109,8 @@ function WatchRoom({ roomId: initialRoomId, videoFile, username, onLeave }) {
                         updateRoom={updateRoom}
                         username={username}
                         userCount={userCount}
+                        messages={messages}
+                        onSendMessage={(text) => sendMessage(username, text)}
                     />
                     {notification && <SyncNotification message={notification} />}
                 </div>

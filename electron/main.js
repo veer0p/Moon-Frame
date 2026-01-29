@@ -12,7 +12,7 @@ protocol.registerSchemesAsPrivileged([
 
 let mainWindow;
 
-const isDev = process.env.NODE_ENV !== 'production' || process.argv.includes('--dev');
+const isDev = !app.isPackaged || process.argv.includes('--dev');
 
 function createWindow() {
     mainWindow = new BrowserWindow({

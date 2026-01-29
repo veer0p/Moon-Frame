@@ -28,28 +28,20 @@ export const useVideoSync = (videoRef, roomState, updateRoom, username, userCoun
             userCount
         });
 
-        // Sync time if significantly different (more than 2 seconds)
+        // Sync time if significantly different (more than 1.0 second)
         const timeDiff = Math.abs(video.currentTime - roomState.video_time);
-        if (timeDiff > 2.0) {
+        if (timeDiff > 1.0) {
             console.log('useVideoSync: Syncing time', { current: video.currentTime, target: roomState.video_time });
             video.currentTime = roomState.video_time;
         }
 
-        // Smart playback: Don't auto-play if alone in room
-        if (userCount === 1) {
-            console.log('useVideoSync: Alone in room, not auto-playing');
-            if (!video.paused) {
-                video.pause();
-            }
-        } else {
-            // Sync playback state when others are present
-            if (roomState.is_playing && video.paused) {
-                console.log('useVideoSync: Playing video');
-                video.play().catch(err => console.error('Play error:', err));
-            } else if (!roomState.is_playing && !video.paused) {
-                console.log('useVideoSync: Pausing video');
-                video.pause();
-            }
+        // Sync playback state
+        if (roomState.is_playing && video.paused) {
+            console.log('useVideoSync: Playing video');
+            video.play().catch(err => console.error('Play error:', err));
+        } else if (!roomState.is_playing && !video.paused) {
+            console.log('useVideoSync: Pausing video');
+            video.pause();
         }
 
         // Sync playback rate

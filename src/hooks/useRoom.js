@@ -1,9 +1,10 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 
 export const useRoom = (roomCode, username) => {
     const [roomState, setRoomState] = useState(null);
     const [isConnected, setIsConnected] = useState(false);
+    const channelRef = useRef(null);
 
     // Subscribe to room updates via Broadcast (more reliable than Postgres Changes)
     useEffect(() => {
@@ -74,6 +75,7 @@ export const useRoom = (roomCode, username) => {
                     console.log('useRoom: Broadcast status:', status);
                     if (status === 'SUBSCRIBED') {
                         setIsConnected(true);
+                        channelRef.current = channel;
                         console.log('useRoom: ✅ Broadcast channel connected:', roomCode);
                     } else if (status === 'CHANNEL_ERROR') {
                         console.error('useRoom: ❌ Broadcast connection failed');
@@ -88,6 +90,7 @@ export const useRoom = (roomCode, username) => {
             if (channel) {
                 console.log('useRoom: Closing Broadcast channel');
                 supabase.removeChannel(channel);
+                channelRef.current = null;
                 setIsConnected(false);
             }
         };
@@ -118,9 +121,12 @@ export const useRoom = (roomCode, username) => {
 
         console.log('useRoom: ✅ Database updated');
 
-        // Broadcast to all connected clients
-        const channel = supabase.channel(`room-${roomCode}`);
-        await channel.send({
+        // Update local state immediately for better responsiveness
+        setRoomState(data);
+
+        // Broadcast to all connected clients using the existing channel if possible
+        const targetChannel = channelRef.current || supabase.channel(`room-${roomCode}`);
+        await targetChannel.send({
             type: 'broadcast',
             event: 'room-update',
             payload: data

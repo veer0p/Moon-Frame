@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
+import ChatPanel from './ChatPanel';
 import useKeyboardShortcuts from '../hooks/useKeyboardShortcuts';
 import useInactivityTimer from '../hooks/useInactivityTimer';
 import { useVideoSync } from '../hooks/useVideoSync';
 import formatTime from '../utils/formatTime';
 import './VideoPlayer.css';
 
-function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1 }) {
+function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1, messages = [], onSendMessage }) {
     const videoRef = useRef(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
@@ -21,6 +22,9 @@ function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1
     const [selectedAudioTrack, setSelectedAudioTrack] = useState(0);
     const [textTracks, setTextTracks] = useState([]);
     const [selectedSubtitle, setSelectedSubtitle] = useState(-1); // -1 means off
+    const [showChat, setShowChat] = useState(false);
+    const [feedback, setFeedback] = useState(null); // { type, value, icon }
+    const [isLoading, setIsLoading] = useState(false);
 
     const containerRef = useRef(null);
     const { isInactive } = useInactivityTimer(containerRef, 3000);
@@ -127,11 +131,16 @@ function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1
             }
         };
 
+        const handleWaiting = () => setIsLoading(true);
+        const handlePlaying = () => setIsLoading(false);
+
         video.addEventListener('timeupdate', handleTimeUpdate);
         video.addEventListener('durationchange', handleDurationChange);
         video.addEventListener('progress', handleProgress);
         video.addEventListener('loadeddata', handleLoadedData);
         video.addEventListener('error', handleError);
+        video.addEventListener('waiting', handleWaiting);
+        video.addEventListener('playing', handlePlaying);
 
         return () => {
             video.removeEventListener('timeupdate', handleTimeUpdate);
@@ -139,8 +148,16 @@ function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1
             video.removeEventListener('progress', handleProgress);
             video.removeEventListener('loadeddata', handleLoadedData);
             video.removeEventListener('error', handleError);
+            video.removeEventListener('waiting', handleWaiting);
+            video.removeEventListener('playing', handlePlaying);
         };
     }, []);
+
+    const triggerFeedback = (type, value, icon) => {
+        setFeedback({ type, value, icon });
+        // Auto-hide feedback after animation
+        setTimeout(() => setFeedback(null), 800);
+    };
 
     const togglePlay = () => {
         const video = videoRef.current;
@@ -156,19 +173,30 @@ function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1
                 console.error('Play error:', error);
             });
             setIsPlaying(true);
+            triggerFeedback('play', null, (
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+            ));
             if (updateRoom) syncPlay();
         } else {
             video.pause();
             setIsPlaying(false);
+            triggerFeedback('pause', null, (
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
+            ));
             if (updateRoom) syncPause();
         }
     };
 
-    const handleSeek = (time) => {
+    const handleSeek = (time, amount) => {
         const video = videoRef.current;
         if (!video) return;
         video.currentTime = time;
         setCurrentTime(time);
+        if (amount) {
+            triggerFeedback('seek', `${amount > 0 ? '+' : ''}${amount}s`, (
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" /></svg>
+            ));
+        }
         if (updateRoom) syncSeek(time);
     };
 
@@ -178,6 +206,7 @@ function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1
         video.volume = newVolume;
         setVolume(newVolume);
         if (newVolume > 0) setIsMuted(false);
+        triggerFeedback('volume', Math.round(newVolume * 100) + '%', null);
     };
 
     const toggleMute = () => {
@@ -192,6 +221,7 @@ function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1
         if (!video) return;
         video.playbackRate = rate;
         setPlaybackRate(rate);
+        triggerFeedback('speed', rate + 'x', null);
         if (updateRoom) syncPlaybackRate(rate);
     };
 
@@ -203,6 +233,27 @@ function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1
             document.exitFullscreen();
             setIsFullscreen(false);
         }
+    };
+
+    const handleStop = () => {
+        const video = videoRef.current;
+        if (!video) return;
+        video.pause();
+        video.currentTime = 0;
+        setIsPlaying(false);
+        if (updateRoom) syncPause();
+    };
+
+    const handleCycleAudioTrack = () => {
+        if (audioTracks.length <= 1) return;
+        const nextTrack = (selectedAudioTrack + 1) % audioTracks.length;
+        handleAudioTrackChange(nextTrack);
+    };
+
+    const handleCycleSubtitles = () => {
+        if (textTracks.length === 0) return;
+        const nextTrack = selectedSubtitle + 1 >= textTracks.length ? -1 : selectedSubtitle + 1;
+        handleSubtitleChange(nextTrack);
     };
 
     const handleAudioTrackChange = (trackIndex) => {
@@ -244,12 +295,19 @@ function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1
 
     useKeyboardShortcuts({
         onPlayPause: togglePlay,
-        onSeekForward: () => handleSeek(Math.min(currentTime + 10, duration)),
-        onSeekBackward: () => handleSeek(Math.max(currentTime - 10, 0)),
+        onStop: handleStop,
+        onSeekForward: (amount = 10) => handleSeek(Math.min(currentTime + amount, duration), amount),
+        onSeekBackward: (amount = 10) => handleSeek(Math.max(currentTime - amount, 0), -amount),
         onVolumeUp: () => handleVolumeChange(Math.min(volume + 0.1, 1)),
         onVolumeDown: () => handleVolumeChange(Math.max(volume - 0.1, 0)),
         onMute: toggleMute,
         onFullscreen: toggleFullscreen,
+        onCycleSubtitles: handleCycleSubtitles,
+        onCycleAudio: handleCycleAudioTrack,
+        onSlowDown: () => changePlaybackRate(Math.max(playbackRate - 0.25, 0.25)),
+        onSpeedUp: () => changePlaybackRate(Math.min(playbackRate + 0.25, 4)),
+        onResetSpeed: () => changePlaybackRate(1),
+        onToggleChat: () => isFullscreen && setShowChat(prev => !prev),
     });
 
     return (
@@ -283,12 +341,45 @@ function VideoPlayer({ videoFile, roomState, updateRoom, username, userCount = 1
                 </div>
             )}
 
+            {isLoading && (
+                <div className="video-loading">
+                    <div className="spinner"></div>
+                </div>
+            )}
+
+            {feedback && (
+                feedback.type === 'volume' ? (
+                    <div className="volume-overlay">
+                        <div className="volume-bar-container">
+                            <div className="volume-bar-fill" style={{ height: feedback.value }}></div>
+                        </div>
+                        <span className="feedback-value">{feedback.value}</span>
+                    </div>
+                ) : (
+                    <div className="feedback-overlay">
+                        <div className="feedback-icon">{feedback.icon}</div>
+                        {feedback.value && <span className="feedback-value">{feedback.value}</span>}
+                    </div>
+                )
+            )}
+
             <video
                 ref={videoRef}
                 className="video-element"
                 onClick={videoFile ? togglePlay : undefined}
+                onDoubleClick={videoFile ? toggleFullscreen : undefined}
                 style={{ display: videoFile && !hasError ? 'block' : 'none', cursor: videoFile ? 'pointer' : 'default' }}
             />
+
+            {isFullscreen && (
+                <div className={`fullscreen-chat-overlay ${!showChat ? 'hidden' : ''}`}>
+                    <ChatPanel
+                        messages={messages}
+                        onSendMessage={onSendMessage}
+                        currentUsername={username}
+                    />
+                </div>
+            )}
 
             <div className={`video-controls glass ${isInactive || !videoFile ? 'hidden' : ''}`}>
                 <div className="timeline-container">
