@@ -274,7 +274,7 @@ function LandingScreen({ onCreateRoom, onJoinRoom }) {
             <input
                 ref={fileInputRef}
                 type="file"
-                accept="video/*"
+                accept="video/*,.mkv,.MKV,.webm,.avi,.mov"
                 onChange={handleWebFileSelect}
                 style={{ display: 'none' }}
             />

@@ -58,9 +58,13 @@ ipcMain.handle('select-video', async () => {
                 extensions: [
                     'mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv',
                     'flv', 'wmv', 'm4v', 'mpg', 'mpeg', '3gp',
-                    'ts', 'm2ts'
+                    'ts', 'm2ts',
+                    'MP4', 'WEBM', 'OGG', 'MOV', 'AVI', 'MKV',
+                    'FLV', 'WMV', 'M4V', 'MPG', 'MPEG', '3GP',
+                    'TS', 'M2TS'
                 ]
             },
+            { name: 'Matroska Video', extensions: ['mkv', 'MKV'] },
             { name: 'All Files', extensions: ['*'] }
         ],
         title: 'Select Video File'
