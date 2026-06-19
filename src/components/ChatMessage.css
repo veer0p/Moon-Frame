@@ -28,15 +28,19 @@
 }
 
 .chat-message.own .message-bubble {
-    background: linear-gradient(135deg, var(--color-accent-purple), var(--color-accent-purple-hover));
+    background: linear-gradient(135deg, var(--color-accent-purple), var(--color-accent-cyan));
     color: white;
     border-bottom-right-radius: var(--space-xs);
+    box-shadow: var(--shadow-md), var(--glass-glow);
 }
 
 .chat-message.partner .message-bubble {
-    background: var(--color-bg-elevated);
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--glass-border);
     color: var(--color-text-primary);
     border-bottom-left-radius: var(--space-xs);
+    box-shadow: var(--shadow-sm);
 }
 
 .message-bubble p {

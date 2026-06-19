@@ -8,62 +8,92 @@ export const usePresence = (roomCode, username) => {
     const { user } = useAuth();
 
     useEffect(() => {
-        if (!roomCode || !username || !user) return;
+        if (!roomCode || !username) return;
 
         let heartbeatInterval;
         let channel;
 
         const setupPresence = async () => {
-            // Insert or update presence
-            const { error } = await supabase
-                .from('room_presence')
-                .upsert({
-                    room_code: roomCode,
-                    username,
-                    user_id: user.id,
-                    last_seen: new Date().toISOString(),
-                    is_active: true
-                }, {
-                    onConflict: 'room_code,username'
-                });
-
-            if (error) {
-                console.error('usePresence: Error setting presence:', error);
-            } else {
-                console.log('usePresence: Presence set for', username);
-            }
-
-            // Load active users
-            await loadActiveUsers();
-
-            // Set up heartbeat (every 5 seconds)
-            heartbeatInterval = setInterval(async () => {
-                await supabase
+            if (user) {
+                // Insert or update presence in DB
+                const { error } = await supabase
                     .from('room_presence')
-                    .update({
+                    .upsert({
+                        room_code: roomCode,
+                        username,
+                        user_id: user.id,
                         last_seen: new Date().toISOString(),
                         is_active: true
-                    })
-                    .eq('room_code', roomCode)
-                    .eq('username', username)
-                    .eq('user_id', user.id);
-            }, 5000);
+                    }, {
+                        onConflict: 'room_code,username'
+                    });
+
+                if (error) {
+                    console.error('usePresence: Error setting presence:', error);
+                } else {
+                    console.log('usePresence: Presence set for', username);
+                }
+
+                // Load active users from DB
+                await loadActiveUsers();
+
+                // Set up heartbeat (every 5 seconds)
+                heartbeatInterval = setInterval(async () => {
+                    await supabase
+                        .from('room_presence')
+                        .update({
+                            last_seen: new Date().toISOString(),
+                            is_active: true
+                        })
+                        .eq('room_code', roomCode)
+                        .eq('username', username)
+                        .eq('user_id', user.id);
+                }, 5000);
+            } else {
+                // Guest mode local initialization
+                setActiveUsers([{ username, is_active: true, created_at: new Date().toISOString() }]);
+                setUserCount(1);
+            }
 
             // Subscribe to presence changes via Broadcast
             channel = supabase
                 .channel(`presence-${roomCode}`)
-                .on('broadcast', { event: 'presence-update' }, () => {
-                    console.log('usePresence: Presence update received');
-                    loadActiveUsers();
+                .on('broadcast', { event: 'presence-update' }, (payload) => {
+                    console.log('usePresence: Presence update received:', payload.payload);
+                    if (user) {
+                        loadActiveUsers();
+                    } else {
+                        // Guest mode: update active users locally based on broadcast
+                        const { username: peerName, action } = payload.payload;
+                        if (action === 'left') {
+                            setActiveUsers((prev) => prev.filter(u => u.username !== peerName));
+                            setUserCount((prev) => Math.max(1, prev - 1));
+                        } else {
+                            setActiveUsers((prev) => {
+                                const exists = prev.some(u => u.username === peerName);
+                                if (!exists) {
+                                    return [...prev, { username: peerName, is_active: true }];
+                                }
+                                return prev;
+                            });
+                            setUserCount((prev) => {
+                                const exists = activeUsers.some(u => u.username === peerName);
+                                return exists ? prev : prev + 1;
+                            });
+                        }
+                    }
                 })
                 .subscribe((status) => {
                     if (status === 'SUBSCRIBED') {
                         console.log('usePresence: ✅ Subscribed to presence channel');
+                        // Send initial join broadcast so peers know we are here
+                        broadcastPresence();
                     }
                 });
         };
 
         const loadActiveUsers = async () => {
+            if (!user) return;
             // Clean up stale users first (inactive for >30 seconds)
             await supabase
                 .from('room_presence')
@@ -96,25 +126,37 @@ export const usePresence = (roomCode, username) => {
             if (channel) {
                 supabase.removeChannel(channel);
             }
-            // Mark as inactive
-            supabase
-                .from('room_presence')
-                .update({ is_active: false })
-                .eq('room_code', roomCode)
-                .eq('username', username)
-                .eq('user_id', user.id)
-                .then(() => {
-                    console.log('usePresence: Marked as inactive');
-                    // Broadcast presence change
-                    const broadcastChannel = supabase.channel(`presence-${roomCode}`);
-                    broadcastChannel.send({
-                        type: 'broadcast',
-                        event: 'presence-update',
-                        payload: { username, action: 'left' }
+            
+            if (user) {
+                // Mark as inactive in DB
+                supabase
+                    .from('room_presence')
+                    .update({ is_active: false })
+                    .eq('room_code', roomCode)
+                    .eq('username', username)
+                    .eq('user_id', user.id)
+                    .then(() => {
+                        console.log('usePresence: Marked as inactive');
+                        // Broadcast presence change
+                        const broadcastChannel = supabase.channel(`presence-${roomCode}`);
+                        broadcastChannel.send({
+                            type: 'broadcast',
+                            event: 'presence-update',
+                            payload: { username, action: 'left' }
+                        });
                     });
+            } else {
+                // Broadcast presence change for guest
+                const broadcastChannel = supabase.channel(`presence-${roomCode}`);
+                broadcastChannel.send({
+                    type: 'broadcast',
+                    event: 'presence-update',
+                    payload: { username, action: 'left' }
                 });
+            }
         };
     }, [roomCode, username, user]);
+
 
     const broadcastPresence = useCallback(async () => {
         const channel = supabase.channel(`presence-${roomCode}`);

@@ -200,3 +200,42 @@
         min-height: 200px;
     }
 }
+
+/* Custom fullscreen state styles for Electron native fullscreen mode */
+.watch-room.fullscreen-mode {
+    padding: 0 !important;
+    gap: 0 !important;
+}
+
+.watch-room.fullscreen-mode .room-header,
+.watch-room.fullscreen-mode .sidebar {
+    display: none !important;
+}
+
+.watch-room.fullscreen-mode .watch-content {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: 1fr !important;
+    padding: 0 !important;
+    gap: 0 !important;
+}
+
+.watch-room.fullscreen-mode .video-section {
+    border-radius: 0 !important;
+    height: 100vh !important;
+    width: 100vw !important;
+}
+
+/* Collapsible Sidebar Styles */
+.watch-room.sidebar-hidden .sidebar {
+    display: none !important;
+}
+
+.watch-room.sidebar-hidden .watch-content {
+    grid-template-columns: 1fr !important;
+}
+
+@media (max-width: 1024px) {
+    .watch-room.sidebar-hidden .watch-content {
+        grid-template-rows: 1fr !important;
+    }
+}

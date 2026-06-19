@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import './Auth.css';
 
-function Login({ onToggleMode }) {
+function Login({ onToggleMode, onContinueAsGuest }) {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
@@ -28,21 +28,21 @@ function Login({ onToggleMode }) {
                     <div className="form-group">
                         <label>Email</label>
                         <input
-                            type="email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            placeholder="your@email.com"
-                            required
+                             type="email"
+                             value={email}
+                             onChange={(e) => setEmail(e.target.value)}
+                             placeholder="your@email.com"
+                             required
                         />
                     </div>
                     <div className="form-group">
                         <label>Password</label>
                         <input
-                            type="password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="••••••••"
-                            required
+                             type="password"
+                             value={password}
+                             onChange={(e) => setPassword(e.target.value)}
+                             placeholder="••••••••"
+                             required
                         />
                     </div>
 
@@ -53,6 +53,18 @@ function Login({ onToggleMode }) {
                     </button>
                 </form>
 
+                <div className="guest-mode-divider">
+                    <span>OR</span>
+                </div>
+
+                <button 
+                    type="button" 
+                    className="btn btn-secondary btn-full guest-btn" 
+                    onClick={onContinueAsGuest}
+                >
+                    ⚡ Continue as Guest
+                </button>
+
                 <div className="auth-footer">
                     <span>Don't have an account?</span>
                     <button onClick={onToggleMode} className="auth-link">Sign Up</button>
@@ -61,5 +73,6 @@ function Login({ onToggleMode }) {
         </div>
     );
 }
+
 
 export default Login;

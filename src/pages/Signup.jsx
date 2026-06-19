@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import './Auth.css';
 
-function Signup({ onToggleMode }) {
+function Signup({ onToggleMode, onContinueAsGuest }) {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
@@ -63,6 +63,18 @@ function Signup({ onToggleMode }) {
                     </button>
                 </form>
 
+                <div className="guest-mode-divider">
+                    <span>OR</span>
+                </div>
+
+                <button 
+                    type="button" 
+                    className="btn btn-secondary btn-full guest-btn" 
+                    onClick={onContinueAsGuest}
+                >
+                    ⚡ Continue as Guest
+                </button>
+
                 <div className="auth-footer">
                     <span>Already have an account?</span>
                     <button onClick={onToggleMode} className="auth-link">Sign In</button>
@@ -71,5 +83,6 @@ function Signup({ onToggleMode }) {
         </div>
     );
 }
+
 
 export default Signup;

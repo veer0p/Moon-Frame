@@ -11,17 +11,22 @@ import { useChat } from '../hooks/useChat';
 import { usePresence } from '../hooks/usePresence';
 import { useNotifications } from '../hooks/useNotifications';
 import { generateRoomCode } from '../utils/helpers';
+import { EmojiShower } from './EmojiTray';
+import { useEmojiReactions } from '../hooks/useEmojiReactions';
 import './WatchRoom.css';
 
-function WatchRoom({ roomId: initialRoomId, videoFile, username, onLeave }) {
+function WatchRoom({ roomId: initialRoomId, videoFile, onVideoFileSelect, username, onLeave }) {
     const [roomCode, setRoomCode] = useState(initialRoomId);
     const [notification, setNotification] = useState(null);
     const [isCreatingRoom, setIsCreatingRoom] = useState(false);
+    const [isFullscreenMode, setIsFullscreenMode] = useState(false);
+    const [showSidebar, setShowSidebar] = useState(true);
 
     const { roomState, updateRoom, isConnected } = useRoom(roomCode, username, videoFile);
     const { messages, sendMessage } = useChat(roomCode);
     const { activeUsers, userCount } = usePresence(roomCode, username);
     const { success, warning, info } = useNotifications();
+    const { showerEmojis, triggerShower } = useEmojiReactions(roomCode);
 
     // Create room if no roomId provided (user clicked "Create Room")
     useEffect(() => {
@@ -52,6 +57,13 @@ function WatchRoom({ roomId: initialRoomId, videoFile, username, onLeave }) {
 
         createRoom();
     }, [initialRoomId, username, isCreatingRoom, success, warning]);
+
+    // Save roomCode to sessionStorage so it survives refreshes
+    useEffect(() => {
+        if (roomCode) {
+            sessionStorage.setItem('roomId', roomCode);
+        }
+    }, [roomCode]);
 
     // Monitor user count changes
     useEffect(() => {
@@ -84,33 +96,28 @@ function WatchRoom({ roomId: initialRoomId, videoFile, username, onLeave }) {
     };
 
     return (
-        <div className="watch-room">
+        <div className={`watch-room ${isFullscreenMode ? 'fullscreen-mode' : ''} ${!showSidebar ? 'sidebar-hidden' : ''}`}>
             <Toast />
-
-            <div className="room-header">
-                <div className="room-info">
-                    <span className="room-label">Room</span>
-                    <span className="room-code">{roomCode}</span>
-                    <SyncIndicator isConnected={isConnected} />
-                </div>
-                <button className="leave-btn" onClick={handleLeave}>
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                        <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    </svg>
-                    Leave Room
-                </button>
-            </div>
+            <EmojiShower particles={showerEmojis} />
 
             <div className="watch-content">
                 <div className="video-section">
                     <VideoPlayer
                         videoFile={videoFile}
+                        onVideoFileSelect={onVideoFileSelect}
                         roomState={roomState}
                         updateRoom={updateRoom}
                         username={username}
                         userCount={userCount}
                         messages={messages}
                         onSendMessage={(text) => sendMessage(username, text)}
+                        onEmojiReaction={triggerShower}
+                        onFullscreenChange={(isFullscreen) => setIsFullscreenMode(isFullscreen)}
+                        roomCode={roomCode}
+                        isConnected={isConnected}
+                        showSidebar={showSidebar}
+                        onToggleChat={() => setShowSidebar(prev => !prev)}
+                        onLeave={handleLeave}
                     />
                     {notification && <SyncNotification message={notification} />}
                 </div>
@@ -121,6 +128,7 @@ function WatchRoom({ roomId: initialRoomId, videoFile, username, onLeave }) {
                         messages={messages}
                         onSendMessage={(text) => sendMessage(username, text)}
                         currentUsername={username}
+                        onEmojiReaction={triggerShower}
                     />
                 </div>
             </div>

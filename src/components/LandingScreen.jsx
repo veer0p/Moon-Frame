@@ -7,7 +7,7 @@ import './LandingScreen.css';
 
 const DEFAULT_ROOM_CODE = 'WATCH1'; // Default room everyone can join
 
-function LandingScreen({ onCreateRoom, onJoinRoom }) {
+function LandingScreen({ onCreateRoom, onJoinRoom, isGuest = false, onExitGuest }) {
     const [mode, setMode] = useState(null); // null | 'create' | 'join'
     const [roomCode, setRoomCode] = useState('');
     const [username, setUsername] = useState('');
@@ -62,14 +62,43 @@ function LandingScreen({ onCreateRoom, onJoinRoom }) {
             // Use custom protocol for streaming
             const videoUrl = `video://${filePath}`;
             const fileName = filePath.split(/[\\/]/).pop();
+            const ext = fileName.split('.').pop().toLowerCase();
 
-            // Create a mock File object that VideoPlayer can use
-            // We attach the custom URL to it
+            // Determine MIME type from extension
+            const mimeTypes = {
+                'mp4': 'video/mp4', 'm4v': 'video/mp4',
+                'webm': 'video/webm',
+                'ogg': 'video/ogg', 'ogv': 'video/ogg',
+                'mov': 'video/quicktime',
+                'avi': 'video/x-msvideo',
+                'mkv': 'video/x-matroska',
+                'flv': 'video/x-flv',
+                'wmv': 'video/x-ms-wmv',
+                'mpg': 'video/mpeg', 'mpeg': 'video/mpeg',
+                '3gp': 'video/3gpp',
+                'ts': 'video/mp2t', 'm2ts': 'video/mp2t',
+            };
+
+            // Get video info (duration, codecs, remux status) from FFmpeg
+            let videoInfo = { duration: 0, needsRemux: false, videoCodec: 'unknown', audioCodec: 'unknown' };
+            if (window.electronAPI.getVideoInfo) {
+                try {
+                    videoInfo = await window.electronAPI.getVideoInfo(filePath);
+                } catch (e) {
+                    console.warn('Failed to get video info:', e);
+                }
+            }
+
             const file = {
                 name: fileName,
-                type: 'video/mp4', // Default type, player will handle it
-                size: 0, // Unknown size, doesn't matter for streaming
-                previewUrl: videoUrl // Custom property we'll use in VideoPlayer
+                type: mimeTypes[ext] || 'video/mp4',
+                size: 0,
+                previewUrl: videoUrl,
+                filePath: filePath,
+                needsRemux: videoInfo.needsRemux || false,
+                mediaDuration: videoInfo.duration || 0,
+                videoCodec: videoInfo.videoCodec || 'unknown',
+                audioCodec: videoInfo.audioCodec || 'unknown',
             };
 
             const finalUsername = username.trim() || generateUsername();
@@ -88,6 +117,7 @@ function LandingScreen({ onCreateRoom, onJoinRoom }) {
                 localStorage.setItem('watch-together-last-room', DEFAULT_ROOM_CODE);
                 onJoinRoom(DEFAULT_ROOM_CODE, file, finalUsername);
             }
+
         } else {
             // Fallback to file input for web version
             fileInputRef.current?.click();
@@ -159,17 +189,18 @@ function LandingScreen({ onCreateRoom, onJoinRoom }) {
                 </div>
                 <div className="nav-user">
                     <div className="user-info">
-                        <div className="user-avatar">{user?.email?.[0].toUpperCase()}</div>
-                        <span className="user-email">{user?.email}</span>
+                        <div className="user-avatar">{isGuest ? 'G' : user?.email?.[0].toUpperCase()}</div>
+                        <span className="user-email">{isGuest ? 'Guest User' : user?.email}</span>
                     </div>
-                    <button className="logout-btn-premium" onClick={() => signOut()}>
+                    <button className="logout-btn-premium" onClick={isGuest ? onExitGuest : signOut}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
-                        Logout
+                        {isGuest ? 'Exit Guest' : 'Logout'}
                     </button>
                 </div>
             </header>
+
 
             <main className="landing-main">
                 <section className="hero-section">
