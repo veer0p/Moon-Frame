@@ -1,6 +1,6 @@
 {
     "name": "electron-watch-together",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "Watch videos together in real-time - Desktop App",
     "main": "electron/main.js",
     "type": "module",
@@ -10,7 +10,9 @@
         "preview": "vite preview",
         "electron": "electron .",
         "electron:dev": "vite",
-        "package": "npm run build && electron-builder"
+        "package": "npm run build && electron-builder",
+        "build:win": "npm run build && electron-builder --win",
+        "build:linux": "npm run build && electron-builder --linux"
     },
     "keywords": [
         "electron",
@@ -45,6 +47,19 @@
     "build": {
         "appId": "com.watchtogether.app",
         "productName": "Watch Together",
+        "win": {
+            "target": [
+                "nsis",
+                "portable"
+            ]
+        },
+        "linux": {
+            "target": [
+                "AppImage",
+                "deb"
+            ],
+            "category": "Video"
+        },
         "files": [
             "dist/**/*",
             "electron/**/*",
