@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Mic, MicOff, Trash2, Eye } from 'lucide-react';
 import './LiveKitOverlay.css';
 
@@ -28,7 +29,7 @@ export function TrackVideo({ track, isLocal = false }) {
 }
 
 // Helper to render remote audio tracks in the background
-export function TrackAudio({ track }) {
+export function TrackAudio({ track, volume = 1.0 }) {
     const audioRef = useRef(null);
 
     useEffect(() => {
@@ -41,14 +42,18 @@ export function TrackAudio({ track }) {
         };
     }, [track]);
 
-    return <audio ref={audioRef} autoPlay style={{ display: 'none' }} />;
+    useEffect(() => {
+        if (audioRef.current) {
+            audioRef.current.volume = volume;
+        }
+    }, [volume]);
+
     return <audio ref={audioRef} autoPlay style={{ display: 'none' }} />;
 }
 
 // Draggable Bubble component
-function DraggableBubble({ p, userColor, hasCamera, getInitials, isLocal, layout }) {
+function DraggableBubble({ p, userColor, hasCamera, getInitials, isLocal, layout, voiceVolume, onHide }) {
     const [position, setPosition] = useState({ x: 0, y: 0 });
-    const [isHidden, setIsHidden] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
     const dragRef = useRef(null);
     const dragStartPos = useRef({ x: 0, y: 0 });
@@ -89,19 +94,9 @@ function DraggableBubble({ p, userColor, hasCamera, getInitials, isLocal, layout
         
         // Hide if dropped in the bottom 20% of the screen
         if (e.clientY > window.innerHeight * 0.8) {
-            setIsHidden(true);
+            if (onHide) onHide();
         }
     };
-
-    if (isHidden) {
-        return (
-            <button className="livekit-restore-btn" onClick={() => setIsHidden(false)} title={`Show ${p.identity}`}>
-                <Eye size={16} />
-                <span className="livekit-bubble-name">{p.identity}</span>
-                {!isLocal && p.audioTrack && <TrackAudio track={p.audioTrack} />}
-            </button>
-        );
-    }
 
     const wrapperStyle = layout === 'grid' ? {
         cursor: 'default',
@@ -109,7 +104,8 @@ function DraggableBubble({ p, userColor, hasCamera, getInitials, isLocal, layout
     } : {
         transform: `translate(${position.x}px, ${position.y}px)`,
         cursor: isDragging ? 'grabbing' : 'grab',
-        zIndex: isDragging ? 100 : 1
+        zIndex: isDragging ? 100 : 1,
+        touchAction: 'none'
     };
 
     return (
@@ -151,21 +147,22 @@ function DraggableBubble({ p, userColor, hasCamera, getInitials, isLocal, layout
 
             {/* Render audio for remote participant */}
             {!isLocal && p.audioTrack && (
-                <TrackAudio track={p.audioTrack} />
+                <TrackAudio track={p.audioTrack} volume={voiceVolume} />
             )}
             
             {/* Drop zone overlay rendered globally when dragging */}
-            {isDragging && (
+            {isDragging && createPortal(
                 <div className="livekit-drop-zone glass">
                     <Trash2 size={32} color="#ff4444" />
                     <span>Drop here to hide camera</span>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );
 }
 
-export default function LiveKitOverlay({ livekit, playerContainerRef, isInactive, layout = 'floating' }) {
+export default function LiveKitOverlay({ livekit, playerContainerRef, isInactive, layout = 'floating', voiceVolume = 1.0 }) {
     const {
         participants,
         localParticipant,
@@ -180,6 +177,19 @@ export default function LiveKitOverlay({ livekit, playerContainerRef, isInactive
     } = livekit;
 
     const overlayRef = useRef(null);
+    const [hiddenBubbles, setHiddenBubbles] = useState(new Set());
+
+    const hideBubble = useCallback((identity) => {
+        setHiddenBubbles(prev => new Set([...prev, identity]));
+    }, []);
+
+    const restoreBubble = useCallback((identity) => {
+        setHiddenBubbles(prev => {
+            const next = new Set(prev);
+            next.delete(identity);
+            return next;
+        });
+    }, []);
 
     // Get initials of username
     const getInitials = (name) => {
@@ -255,9 +265,8 @@ export default function LiveKitOverlay({ livekit, playerContainerRef, isInactive
 
             {/* Content Panel */}
             <div className={`livekit-overlay-content ${layout === 'grid' ? 'grid-content' : ''}`}>
-                {/* Regular Webcams Row/Grid */}
                 <div className={`livekit-bubbles-container ${layout === 'grid' ? `grid-bubbles ${countClass}` : ''}`}>
-                    {allParticipants.map((p) => {
+                    {allParticipants.filter(p => !hiddenBubbles.has(p.identity)).map((p) => {
                         const hasCamera = p.videoTrack && p.participant.isCameraEnabled;
                         const userColor = getUserColor(p.identity);
                         return (
@@ -269,10 +278,25 @@ export default function LiveKitOverlay({ livekit, playerContainerRef, isInactive
                                 getInitials={getInitials}
                                 isLocal={p.isLocal}
                                 layout={layout}
+                                voiceVolume={voiceVolume}
+                                onHide={() => hideBubble(p.identity)}
                             />
                         );
                     })}
                 </div>
+                
+                {/* Hidden participants restore buttons */}
+                {hiddenBubbles.size > 0 && (
+                    <div className="livekit-hidden-container">
+                        {allParticipants.filter(p => hiddenBubbles.has(p.identity)).map(p => (
+                            <button key={p.identity} className="livekit-restore-btn" onClick={() => restoreBubble(p.identity)} title={`Show ${p.identity}`}>
+                                <Eye size={16} />
+                                <span className="livekit-bubble-name" style={{ position: 'static' }}>{p.identity}</span>
+                                {!p.isLocal && p.audioTrack && <TrackAudio track={p.audioTrack} volume={voiceVolume} />}
+                            </button>
+                        ))}
+                    </div>
+                )}
             </div>
         </div>
     );

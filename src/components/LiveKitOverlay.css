@@ -61,12 +61,12 @@
     border-color: rgba(255, 255, 255, 0.2);
 }
 
-/* Video stream styling inside bubble */
 .livekit-video-stream {
     width: 100%;
     height: 100%;
     object-fit: cover;
     transform: scaleX(-1); /* mirror front webcams for natural feel */
+    pointer-events: none; /* Pass touch events to wrapper for dragging */
 }
 
 /* Initials Avatar Placeholder */
@@ -372,10 +372,18 @@
     to { opacity: 1; }
 }
 
-.livekit-restore-btn {
+.livekit-hidden-container {
     position: fixed;
     bottom: 20px;
     right: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 100;
+}
+
+.livekit-restore-btn {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 6px;

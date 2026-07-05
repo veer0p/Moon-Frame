@@ -51,12 +51,12 @@ function VideoPlayer({
     const [showChat, setShowChat] = useState(false);
     const [feedback, setFeedback] = useState(null); // { type, value, icon }
     const [isLoading, setIsLoading] = useState(false);
-    const [showMobileVolume, setShowMobileVolume] = useState(false); // Mobile volume overlay
+    const [voiceVolume, setVoiceVolume] = useState(1); // Voice volume state
+    const [showAudioMixer, setShowAudioMixer] = useState(false); // Audio mixer overlay
     const [timeOffset, setTimeOffset] = useState(0); // Time offset for remuxed files (MKV etc.)
     const [preferScreenShare, setPreferScreenShare] = useState(true);
 
-
-
+    const volumeControlRef = useRef(null);
     const volumeRef = useRef(volume);
     const isMutedRef = useRef(isMuted);
     const playbackRateRef = useRef(playbackRate);
@@ -67,6 +67,21 @@ function VideoPlayer({
         isMutedRef.current = isMuted;
         playbackRateRef.current = playbackRate;
     }, [volume, isMuted, playbackRate]);
+
+    // Close audio mixer when clicking outside (mobile UX)
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (showAudioMixer && volumeControlRef.current && !volumeControlRef.current.contains(e.target)) {
+                setShowAudioMixer(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        document.addEventListener('touchstart', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('touchstart', handleClickOutside);
+        };
+    }, [showAudioMixer]);
 
 
 
@@ -421,12 +436,12 @@ function VideoPlayer({
         setIsMuted(!video.muted);
     };
 
-    const toggleMobileVolume = () => {
-        setShowMobileVolume(prev => !prev);
-        // Auto-hide after 3 seconds
-        if (!showMobileVolume) {
-            setTimeout(() => setShowMobileVolume(false), 3000);
-        }
+    const handleVoiceVolumeChange = (newVolume) => {
+        setVoiceVolume(newVolume);
+    };
+
+    const toggleAudioMixer = () => {
+        setShowAudioMixer(!showAudioMixer);
     };
 
     const changePlaybackRate = (rate) => {
@@ -676,18 +691,19 @@ function VideoPlayer({
                             <span style={{ fontSize: '13px', fontWeight: '500' }}>{videoFile ? "Change Video" : "Choose Video"}</span>
                         </button>
                     )}
-                    <button
-                        className={`control-btn chat-toggle-btn ${((isFullscreen ? showChat : showSidebar)) ? 'active' : ''}`}
-                        onClick={handleToggleChat}
-                        aria-label="Toggle chat"
-                        title="Toggle Chat"
-                        style={{ position: 'relative' }}
-                    >
-                        <MessageSquare size={20} />
+                    <div style={{ position: 'relative' }}>
+                        <button
+                            className={`control-btn chat-toggle-btn ${((isFullscreen ? showChat : showSidebar)) ? 'active' : ''}`}
+                            onClick={handleToggleChat}
+                            aria-label="Toggle chat"
+                            title="Toggle Chat"
+                        >
+                            <MessageSquare size={20} />
+                        </button>
                         {unreadCount > 0 && !((isFullscreen ? showChat : showSidebar)) && (
-                            <span className="unread-badge">{unreadCount}</span>
+                            <span className="unread-badge" style={{ pointerEvents: 'none' }}>{unreadCount}</span>
                         )}
-                    </button>
+                    </div>
                     <button
                         className="control-btn leave-btn-player"
                         onClick={onLeave}
@@ -771,6 +787,7 @@ function VideoPlayer({
             <LiveKitOverlay
                 livekit={livekit}
                 playerContainerRef={containerRef}
+                voiceVolume={voiceVolume}
                 isInactive={isInactive}
                 layout={videoFile ? 'floating' : 'grid'}
             />
@@ -864,13 +881,18 @@ function VideoPlayer({
                             {isPlaying ? <Pause size={24} /> : <Play size={24} />}
                         </button>
 
-                        <div className="volume-control">
+                        <div 
+                            className="volume-control" 
+                            ref={volumeControlRef}
+                            onMouseEnter={() => setShowAudioMixer(true)} 
+                            onMouseLeave={() => setShowAudioMixer(false)}
+                        >
                             <button
                                 className="control-btn volume-btn"
                                 onClick={toggleMute}
                                 onTouchStart={(e) => {
                                     e.preventDefault();
-                                    toggleMobileVolume();
+                                    toggleAudioMixer();
                                 }}
                                 aria-label={isMuted ? "Unmute" : "Mute"}
                             >
@@ -883,13 +905,13 @@ function VideoPlayer({
                                 )}
                             </button>
 
-                            {/* Mobile volume overlay */}
-                            {showMobileVolume && (
-                                <div className="mobile-volume-overlay">
-                                    <div className="mobile-volume-slider-container">
+                            {/* Audio Mixer Overlay */}
+                            <div className={`audio-mixer-overlay ${showAudioMixer ? 'visible' : ''}`}>
+                                <div className="audio-mixer-track">
+                                    <div className="mixer-slider-container">
                                         <input
                                             type="range"
-                                            className="mobile-volume-slider"
+                                            className="audio-mixer-slider"
                                             orient="vertical"
                                             min="0"
                                             max="1"
@@ -897,25 +919,27 @@ function VideoPlayer({
                                             value={isMuted ? 0 : volume}
                                             onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
                                         />
-                                        <span className="mobile-volume-value">{Math.round((isMuted ? 0 : volume) * 100)}%</span>
                                     </div>
+                                    <span className="mixer-label">Media</span>
+                                    <span className="mixer-value">{Math.round((isMuted ? 0 : volume) * 100)}%</span>
                                 </div>
-                            )}
-
-                            <input
-                                type="range"
-                                className="volume-slider"
-                                min="0"
-                                max="1"
-                                step="0.01"
-                                value={isMuted ? 0 : volume}
-                                onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
-                                style={{ '--volume-percent': `${(isMuted ? 0 : volume) * 100}%` }}
-                                aria-label="Volume"
-                                aria-valuemin="0"
-                                aria-valuemax="100"
-                                aria-valuenow={Math.round((isMuted ? 0 : volume) * 100)}
-                            />
+                                <div className="audio-mixer-track">
+                                    <div className="mixer-slider-container">
+                                        <input
+                                            type="range"
+                                            className="audio-mixer-slider"
+                                            orient="vertical"
+                                            min="0"
+                                            max="1"
+                                            step="0.01"
+                                            value={voiceVolume}
+                                            onChange={(e) => handleVoiceVolumeChange(parseFloat(e.target.value))}
+                                        />
+                                    </div>
+                                    <span className="mixer-label">Voice</span>
+                                    <span className="mixer-value">{Math.round(voiceVolume * 100)}%</span>
+                                </div>
+                            </div>
                         </div>
 
                         <span className="time-display">
@@ -996,7 +1020,7 @@ function VideoPlayer({
                     </button>
 
                     <button
-                        className={`meeting-btn ${isScreenSharing ? 'active-lk' : ''}`}
+                        className={`meeting-btn mobile-hidden ${isScreenSharing ? 'active-lk' : ''}`}
                         onClick={toggleScreenShare}
                         title={isScreenSharing ? "Stop presenting" : "Present now"}
                     >

@@ -68,12 +68,6 @@ export const useVideoSync = (videoRef, roomState, updateRoom, username, userCoun
             return;
         }
 
-        // Prevent play if alone in room
-        if (userCount === 1) {
-            console.log('syncPlay: Prevented - alone in room');
-            return;
-        }
-
         console.log('syncPlay: Syncing play action', { time: videoRef.current.currentTime });
         updateRoom({
             is_playing: true,
