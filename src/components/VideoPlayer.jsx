@@ -42,8 +42,6 @@ function VideoPlayer({
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [buffered, setBuffered] = useState(0);
     const [showEmojiTray, setShowEmojiTray] = useState(false);
-    const [hasError, setHasError] = useState(false);
-    const [errorMessage, setErrorMessage] = useState('');
     const [audioTracks, setAudioTracks] = useState([]);
     const [selectedAudioTrack, setSelectedAudioTrack] = useState(0);
     const [textTracks, setTextTracks] = useState([]);
@@ -89,6 +87,7 @@ function VideoPlayer({
     const feedbackTimeoutRef = useRef(null); // Track feedback timeout for debouncing
     const cumulativeSeekRef = useRef(0); // Track cumulative seek amount
     const seekResetTimeoutRef = useRef(null); // Reset cumulative seek after inactivity
+    const syncSeekDebounceRef = useRef(null); // Debounce seek broadcasts
     const { isInactive } = useInactivityTimer(containerRef, 3000);
     const livekit = useLiveKit(roomCode, username);
     const {
@@ -142,8 +141,14 @@ function VideoPlayer({
         roomState,
         updateRoom,
         username,
-        userCount
+        userCount,
+        videoFile
     );
+
+    const syncPauseRef = useRef(syncPause);
+    useEffect(() => {
+        syncPauseRef.current = syncPause;
+    }, [syncPause]);
 
     useEffect(() => {
         const handleFullscreenChange = () => {
@@ -179,8 +184,6 @@ function VideoPlayer({
     useEffect(() => {
         if (videoFile && videoRef.current) {
             console.log('Loading video file:', videoFile.name);
-            setHasError(false);
-            setErrorMessage('');
             setTimeOffset(0);
 
             let url;
@@ -220,7 +223,7 @@ function VideoPlayer({
 
     useEffect(() => {
         const video = videoRef.current;
-        if (!video) return;
+        if (!videoFile) return;
 
         const handleTimeUpdate = () => setCurrentTime(video.currentTime);
         const handleDurationChange = () => setDuration(video.duration);
@@ -261,36 +264,13 @@ function VideoPlayer({
                 console.log('Text tracks detected:', tracks);
             }
         };
-        const handleError = (e) => {
-            console.error('Video error:', e);
-            const video = videoRef.current;
-            if (video && video.error) {
-                console.error('Video error code:', video.error.code, 'message:', video.error.message);
 
-                const errorMsg = video.error.message || '';
-
-                if (video.error.code === 4) {
-                    // Check if it's a codec issue vs format issue
-                    if (errorMsg.includes('no supported streams') || errorMsg.includes('DEMUXER_ERROR')) {
-                        if (videoFile?.needsRemux) {
-                            setErrorMessage('This video has codecs that cannot be remuxed to MP4. The video codec may not be H.264/H.265 compatible. Try re-encoding the file with: ffmpeg -i input.mkv -c:v libx264 -c:a aac output.mp4');
-                        } else if (videoFile?.type === 'video/mp4') {
-                            setErrorMessage('MP4 file has unsupported codecs (likely HEVC/H.265). Please re-encode with H.264 video and AAC audio.');
-                        } else {
-                            setErrorMessage('Video format not supported. Please use MP4 with H.264 video and AAC audio.');
-                        }
-                    } else {
-                        setErrorMessage('Video format not supported. In the desktop app, MKV/AVI/FLV files are automatically remuxed. In browser, please use MP4, WebM, or OGG.');
-                    }
-                } else {
-                    setErrorMessage('Error loading video. Please try a different file.');
-                }
-                setHasError(true);
-            }
+        const handleWaiting = () => {
+            setIsLoading(true);
         };
-
-        const handleWaiting = () => setIsLoading(true);
         const handlePlaying = () => setIsLoading(false);
+        const handleCanPlay = () => setIsLoading(false);
+        const handleSeeked = () => setIsLoading(false);
 
         // NEW: Sync isPlaying state with actual video state
         const handlePlay = () => {
@@ -303,23 +283,29 @@ function VideoPlayer({
         };
 
         video.addEventListener('timeupdate', handleTimeUpdate);
+        video.addEventListener('seeking', handleTimeUpdate);
         video.addEventListener('durationchange', handleDurationChange);
         video.addEventListener('progress', handleProgress);
         video.addEventListener('loadeddata', handleLoadedData);
-        video.addEventListener('error', handleError);
+
         video.addEventListener('waiting', handleWaiting);
         video.addEventListener('playing', handlePlaying);
+        video.addEventListener('canplay', handleCanPlay);
+        video.addEventListener('seeked', handleSeeked);
         video.addEventListener('play', handlePlay);
         video.addEventListener('pause', handlePause);
 
         return () => {
             video.removeEventListener('timeupdate', handleTimeUpdate);
+            video.removeEventListener('seeking', handleTimeUpdate);
             video.removeEventListener('durationchange', handleDurationChange);
             video.removeEventListener('progress', handleProgress);
             video.removeEventListener('loadeddata', handleLoadedData);
-            video.removeEventListener('error', handleError);
+
             video.removeEventListener('waiting', handleWaiting);
             video.removeEventListener('playing', handlePlaying);
+            video.removeEventListener('canplay', handleCanPlay);
+            video.removeEventListener('seeked', handleSeeked);
             video.removeEventListener('play', handlePlay);
             video.removeEventListener('pause', handlePause);
         };
@@ -366,7 +352,7 @@ function VideoPlayer({
 
     const handleSeek = (time, amount) => {
         const video = videoRef.current;
-        if (!video) return;
+        if (!video || !videoFile) return;
 
         // For remuxed files, seeking requires changing the src URL
         // FFmpeg restarts at the new position via ?t= parameter
@@ -390,7 +376,10 @@ function VideoPlayer({
             if (isPlaying) {
                 video.play().catch(err => console.error('Play after seek error:', err));
             }
-            if (updateRoom) syncSeek(clampedTarget);
+            if (updateRoom) {
+                if (syncSeekDebounceRef.current) clearTimeout(syncSeekDebounceRef.current);
+                syncSeekDebounceRef.current = setTimeout(() => syncSeek(clampedTarget), 300);
+            }
             return;
         }
 
@@ -417,12 +406,15 @@ function VideoPlayer({
             }, 1000);
         }
 
-        if (updateRoom) syncSeek(time);
+        if (updateRoom) {
+            if (syncSeekDebounceRef.current) clearTimeout(syncSeekDebounceRef.current);
+            syncSeekDebounceRef.current = setTimeout(() => syncSeek(time), 300);
+        }
     };
 
     const handleVolumeChange = (newVolume) => {
         const video = videoRef.current;
-        if (!video) return;
+        if (!video || !videoFile) return;
         video.volume = newVolume;
         setVolume(newVolume);
         if (newVolume > 0) setIsMuted(false);
@@ -431,7 +423,7 @@ function VideoPlayer({
 
     const toggleMute = () => {
         const video = videoRef.current;
-        if (!video) return;
+        if (!video || !videoFile) return;
         video.muted = !video.muted;
         setIsMuted(!video.muted);
     };
@@ -446,7 +438,7 @@ function VideoPlayer({
 
     const changePlaybackRate = (rate) => {
         const video = videoRef.current;
-        if (!video) return;
+        if (!video || !videoFile) return;
         video.playbackRate = rate;
         setPlaybackRate(rate);
         triggerFeedback('speed', rate + 'x', null);
@@ -473,11 +465,17 @@ function VideoPlayer({
 
     const handleStop = () => {
         const video = videoRef.current;
-        if (!video) return;
+        if (!video || !videoFile) return;
         video.pause();
         video.currentTime = 0;
-        // isPlaying state will be updated by 'pause' event listener
-        if (updateRoom) syncPause();
+        setCurrentTime(0);
+        // Broadcast stop explicitly with time=0 (don't use syncPause which reads stale currentTime)
+        if (updateRoom) {
+            updateRoom({
+                is_playing: false,
+                video_time: 0
+            });
+        }
     };
 
     const handleCycleAudioTrack = () => {
@@ -653,7 +651,7 @@ function VideoPlayer({
     });
 
     return (
-        <div ref={containerRef} className="video-player">
+        <div ref={containerRef} className={`video-player ${isFullscreen ? 'is-fullscreen' : ''}`}>
             <input 
                 id="room-video-picker-input"
                 type="file" 
@@ -716,7 +714,7 @@ function VideoPlayer({
                 </div>
             </div>
 
-            {!videoFile && !hasError && connectionState === 'disconnected' && (
+            {!videoFile && connectionState === 'disconnected' && (
                 <div className="video-placeholder">
                     {onVideoFileSelect && (
                         <button className="screenshare-toggle-btn glass" style={{ position: 'relative', top: '0', transform: 'none', margin: 'auto' }} onClick={triggerFilePicker}>
@@ -728,16 +726,7 @@ function VideoPlayer({
             )}
 
 
-            {hasError && (
-                <div className="video-error">
-                    <AlertCircle size={64} />
-                    <p>Unsupported Video Format</p>
-                    <span>{errorMessage}</span>
-                    <div className="supported-formats">
-                        <strong>Supported formats:</strong> MP4, WebM, OGG. In desktop: MKV, AVI, FLV, TS (auto-remuxed).
-                    </div>
-                </div>
-            )}
+
 
             {isLoading && (
                 <div className="video-loading">
@@ -769,9 +758,10 @@ function VideoPlayer({
                 <video
                     ref={videoRef}
                     className="video-element"
+                    preload="auto"
                     onClick={videoFile ? togglePlay : undefined}
                     onDoubleClick={videoFile ? toggleFullscreen : undefined}
-                    style={{ display: videoFile && !hasError ? 'block' : 'none', cursor: videoFile ? 'pointer' : 'default' }}
+                    style={{ display: videoFile ? 'block' : 'none', cursor: videoFile ? 'pointer' : 'default' }}
                 />
             )}
 

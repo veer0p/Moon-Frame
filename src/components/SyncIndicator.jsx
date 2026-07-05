@@ -11,7 +11,7 @@ function SyncIndicator({ status }) {
             case 'synced':
                 return { label: 'Synced', color: 'var(--color-success)' };
             case 'syncing':
-                return { label: 'Syncing...', color: 'var(--color-warning)' };
+                return { label: 'Buffering...', color: 'var(--color-warning)' };
             case 'disconnected':
                 return { label: 'Disconnected', color: 'var(--color-error)' };
             default:

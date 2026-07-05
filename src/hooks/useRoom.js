@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { logSyncEvent } from '../utils/syncLogger';
 
 export const useRoom = (roomCode, username, videoFile = null) => {
     const [roomState, setRoomState] = useState(null);
@@ -87,8 +88,11 @@ export const useRoom = (roomCode, username, videoFile = null) => {
             channel = supabase
                 .channel(`room-${roomCode}`)
                 .on('broadcast', { event: 'room-update' }, (payload) => {
-                    console.log('useRoom: 🔥 Broadcast received:', payload.payload);
-                    setRoomState(payload.payload);
+                    const data = payload.payload;
+                    // Ignore own broadcasts — we already applied this state optimistically
+                    if (data.last_action_by === username) return;
+                    console.log('useRoom: 🔥 Broadcast received:', data);
+                    setRoomState(data);
                 })
                 .subscribe((status) => {
                     console.log('useRoom: Broadcast status:', status);
@@ -171,11 +175,40 @@ export const useRoom = (roomCode, username, videoFile = null) => {
         if (!roomCode) return;
 
         console.log('useRoom: Updating room and broadcasting:', updates);
-        let data = null;
+        
+        // 1. Prepare optimistic payload immediately
+        const optimisticData = {
+            ...roomState,
+            ...updates,
+            last_action_by: username,
+            updated_at: new Date().toISOString()
+        };
 
+        // 2. Update local state immediately for better responsiveness
+        setRoomState(optimisticData);
+
+        // 3. Broadcast to all connected clients BEFORE database update
+        try {
+            const targetChannel = channelRef.current || supabase.channel(`room-${roomCode}`);
+            await targetChannel.send({
+                type: 'broadcast',
+                event: 'room-update',
+                payload: optimisticData
+            });
+            console.log('useRoom: ✅ Broadcast sent to all clients (Low Latency)');
+        } catch (err) {
+            console.error('useRoom: ❌ Broadcast failed:', err);
+            logSyncEvent(roomCode, username, 'BROADCAST_ERROR', optimisticData.video_time, optimisticData.video_time, err.message);
+        }
+
+        // 4. Update last watched if time changed significantly
+        if (user && updates.video_time !== undefined) {
+            updateLastWatched(roomCode, updates.video_time, videoFile);
+        }
+
+        // 5. Update database asynchronously
         if (user) {
-            // Update database
-            const { data: dbData, error } = await supabase
+            supabase
                 .from('rooms')
                 .update({
                     ...updates,
@@ -183,46 +216,16 @@ export const useRoom = (roomCode, username, videoFile = null) => {
                     updated_at: new Date().toISOString()
                 })
                 .eq('room_code', roomCode)
-                .select()
-                .single();
-
-            if (!error) {
-                console.log('useRoom: ✅ Database updated');
-                data = dbData;
-            } else {
-                console.error('useRoom: ❌ Database update failed:', error);
-            }
+                .then(({ error }) => {
+                    if (error) {
+                        console.error('useRoom: ❌ Database update failed:', error);
+                        logSyncEvent(roomCode, username, 'DB_UPDATE_ERROR', optimisticData.video_time, optimisticData.video_time, error.message);
+                    } else {
+                        console.log('useRoom: ✅ Database updated (Async)');
+                    }
+                });
         }
-
-        // Guest fallback
-        if (!data) {
-            data = {
-                ...roomState,
-                ...updates,
-                last_action_by: username,
-                updated_at: new Date().toISOString()
-            };
-        }
-
-        // Update local state immediately for better responsiveness
-        setRoomState(data);
-
-        // Update last watched if time changed significantly
-        if (user && updates.video_time !== undefined) {
-            updateLastWatched(roomCode, updates.video_time, videoFile);
-        }
-
-        // Broadcast to all connected clients using the existing channel if possible
-        const targetChannel = channelRef.current || supabase.channel(`room-${roomCode}`);
-        await targetChannel.send({
-            type: 'broadcast',
-            event: 'room-update',
-            payload: data
-        });
-
-        console.log('useRoom: ✅ Broadcast sent to all clients');
-
-    }, [roomCode, username, user, videoFile]);
+    }, [roomCode, username, user, videoFile, roomState]);
 
     return { roomState, updateRoom, isConnected };
 };

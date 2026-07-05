@@ -1,21 +1,22 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
+import { logSyncEvent } from '../utils/syncLogger';
 
-export const useVideoSync = (videoRef, roomState, updateRoom, username, userCount = 1) => {
+export const useVideoSync = (videoRef, roomState, updateRoom, username, userCount = 1, videoFile = null) => {
     const isApplyingRemote = useRef(false);
-    const lastSyncedState = useRef(null);
+    const lastAppliedTimestamp = useRef(null);
+    const heartbeatRef = useRef(null);
 
     // Apply remote state changes
     useEffect(() => {
-        if (!roomState || !videoRef.current || !username) {
-            console.debug('useVideoSync: Waiting for dependencies...', { roomState: !!roomState, video: !!videoRef.current, username });
-            return;
-        }
+        if (!roomState || !videoRef.current || !username || !videoFile) return;
 
-        // Ignore if we made this change
-        if (roomState.last_action_by === username) {
-            console.log('useVideoSync: Ignoring own action');
-            return;
-        }
+        // Ignore own actions
+        if (roomState.last_action_by === username) return;
+
+        // Dedup: skip if we already applied this exact update
+        const updateId = roomState.updated_at;
+        if (updateId && updateId === lastAppliedTimestamp.current) return;
+        lastAppliedTimestamp.current = updateId;
 
         const video = videoRef.current;
         isApplyingRemote.current = true;
@@ -23,91 +24,93 @@ export const useVideoSync = (videoRef, roomState, updateRoom, username, userCoun
         console.log('useVideoSync: Applying remote state', {
             is_playing: roomState.is_playing,
             video_time: roomState.video_time,
-            playback_rate: roomState.playback_rate,
-            last_action_by: roomState.last_action_by,
-            userCount
+            last_action_by: roomState.last_action_by
         });
 
-        // Sync time if significantly different (more than 1.0 second)
-        const timeDiff = Math.abs(video.currentTime - roomState.video_time);
-        if (timeDiff > 1.0) {
-            console.log('useVideoSync: Syncing time', { current: video.currentTime, target: roomState.video_time });
-            video.currentTime = roomState.video_time;
+        // --- SEEK ---
+        const targetTime = roomState.video_time;
+        if (targetTime !== undefined && targetTime !== null) {
+            const drift = Math.abs(video.currentTime - targetTime);
+            if (drift > 1.0) {
+                console.log('useVideoSync: Seeking', { from: video.currentTime, to: targetTime });
+                video.currentTime = targetTime;
+            }
         }
 
-        // Sync playback state
+        // --- PLAY / PAUSE ---
         if (roomState.is_playing !== undefined) {
             if (roomState.is_playing && video.paused) {
-                console.log('useVideoSync: Playing video');
+                console.log('useVideoSync: Playing');
                 video.play().catch(err => console.error('Play error:', err));
             } else if (!roomState.is_playing && !video.paused) {
-                console.log('useVideoSync: Pausing video');
+                console.log('useVideoSync: Pausing');
                 video.pause();
             }
         }
 
-        // Sync playback rate
-        if (roomState.playback_rate !== undefined && video.playbackRate !== roomState.playback_rate) {
-            console.log('useVideoSync: Changing playback rate', { from: video.playbackRate, to: roomState.playback_rate });
+        // --- PLAYBACK RATE ---
+        if (roomState.playback_rate && video.playbackRate !== roomState.playback_rate) {
             video.playbackRate = roomState.playback_rate;
         }
 
-        // NOTE: Volume sync removed - each user controls their own volume
-
-        lastSyncedState.current = roomState;
-
         setTimeout(() => {
             isApplyingRemote.current = false;
-        }, 200);
+        }, 500);
     }, [roomState, videoRef, username, userCount]);
 
-    // Sync local actions to room
-    const syncPlay = () => {
-        if (isApplyingRemote.current || !videoRef.current) {
-            console.log('syncPlay: Skipped (applying remote or no video)');
+    // --- HEARTBEAT: Periodically broadcast current time while playing ---
+    // This ensures late-joiners and reconnecting clients get synced
+    useEffect(() => {
+        if (!updateRoom || !videoRef.current || !videoFile || !username) {
+            if (heartbeatRef.current) {
+                clearInterval(heartbeatRef.current);
+                heartbeatRef.current = null;
+            }
             return;
         }
 
-        console.log('syncPlay: Syncing play action', { time: videoRef.current.currentTime });
-        updateRoom({
-            is_playing: true,
-            video_time: videoRef.current.currentTime
-        });
-    };
+        heartbeatRef.current = setInterval(() => {
+            const video = videoRef.current;
+            if (!video || video.paused || isApplyingRemote.current) return;
 
-    const syncPause = () => {
-        if (isApplyingRemote.current || !videoRef.current) {
-            console.log('syncPause: Skipped (applying remote or no video)');
-            return;
-        }
-        console.log('syncPause: Syncing pause action', { time: videoRef.current.currentTime });
-        updateRoom({
-            is_playing: false,
-            video_time: videoRef.current.currentTime
-        });
-    };
+            // Only broadcast if actually playing and time is moving
+            if (video.currentTime > 0) {
+                console.debug('useVideoSync: Heartbeat', { time: video.currentTime.toFixed(1) });
+                updateRoom({
+                    is_playing: true,
+                    video_time: video.currentTime
+                });
+            }
+        }, 5000); // Every 5 seconds
 
-    const syncSeek = (time) => {
-        if (isApplyingRemote.current) {
-            console.log('syncSeek: Skipped (applying remote)');
-            return;
-        }
-        console.log('syncSeek: Syncing seek action', { time });
-        updateRoom({
-            video_time: time
-        });
-    };
+        return () => {
+            if (heartbeatRef.current) {
+                clearInterval(heartbeatRef.current);
+                heartbeatRef.current = null;
+            }
+        };
+    }, [updateRoom, videoRef, videoFile, username]);
 
-    const syncPlaybackRate = (rate) => {
-        if (isApplyingRemote.current) {
-            console.log('syncPlaybackRate: Skipped (applying remote)');
-            return;
-        }
-        console.log('syncPlaybackRate: Syncing rate change', { rate });
-        updateRoom({
-            playback_rate: rate
-        });
-    };
+    // --- Outbound sync functions ---
+    const syncPlay = useCallback(() => {
+        if (isApplyingRemote.current || !videoRef.current) return;
+        updateRoom({ is_playing: true, video_time: videoRef.current.currentTime });
+    }, [updateRoom, videoRef]);
+
+    const syncPause = useCallback(() => {
+        if (isApplyingRemote.current || !videoRef.current) return;
+        updateRoom({ is_playing: false, video_time: videoRef.current.currentTime });
+    }, [updateRoom, videoRef]);
+
+    const syncSeek = useCallback((time) => {
+        if (isApplyingRemote.current) return;
+        updateRoom({ video_time: time });
+    }, [updateRoom]);
+
+    const syncPlaybackRate = useCallback((rate) => {
+        if (isApplyingRemote.current) return;
+        updateRoom({ playback_rate: rate });
+    }, [updateRoom]);
 
     return { syncPlay, syncPause, syncSeek, syncPlaybackRate };
 };

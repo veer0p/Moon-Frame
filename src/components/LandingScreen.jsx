@@ -53,75 +53,9 @@ function LandingScreen({ onCreateRoom, onJoinRoom, isGuest = false, onExitGuest 
         }
     }, [user]);
 
-    const handleFileSelect = async () => {
-        // Check if running in Electron
-        if (window.electronAPI && window.electronAPI.selectVideo) {
-            const filePath = await window.electronAPI.selectVideo();
-            if (!filePath) return;
-
-            // Use custom protocol for streaming
-            const videoUrl = `video://${filePath}`;
-            const fileName = filePath.split(/[\\/]/).pop();
-            const ext = fileName.split('.').pop().toLowerCase();
-
-            // Determine MIME type from extension
-            const mimeTypes = {
-                'mp4': 'video/mp4', 'm4v': 'video/mp4',
-                'webm': 'video/webm',
-                'ogg': 'video/ogg', 'ogv': 'video/ogg',
-                'mov': 'video/quicktime',
-                'avi': 'video/x-msvideo',
-                'mkv': 'video/x-matroska',
-                'flv': 'video/x-flv',
-                'wmv': 'video/x-ms-wmv',
-                'mpg': 'video/mpeg', 'mpeg': 'video/mpeg',
-                '3gp': 'video/3gpp',
-                'ts': 'video/mp2t', 'm2ts': 'video/mp2t',
-            };
-
-            // Get video info (duration, codecs, remux status) from FFmpeg
-            let videoInfo = { duration: 0, needsRemux: false, videoCodec: 'unknown', audioCodec: 'unknown' };
-            if (window.electronAPI.getVideoInfo) {
-                try {
-                    videoInfo = await window.electronAPI.getVideoInfo(filePath);
-                } catch (e) {
-                    console.warn('Failed to get video info:', e);
-                }
-            }
-
-            const file = {
-                name: fileName,
-                type: mimeTypes[ext] || 'video/mp4',
-                size: 0,
-                previewUrl: videoUrl,
-                filePath: filePath,
-                needsRemux: videoInfo.needsRemux || false,
-                mediaDuration: videoInfo.duration || 0,
-                videoCodec: videoInfo.videoCodec || 'unknown',
-                audioCodec: videoInfo.audioCodec || 'unknown',
-            };
-
-            const finalUsername = username.trim() || generateUsername();
-
-            // Save username to localStorage
-            localStorage.setItem('watch-together-username', finalUsername);
-
-            if (mode === 'create') {
-                onCreateRoom(file, finalUsername);
-            } else if (mode === 'join' && roomCode.trim()) {
-                // Save last joined room
-                localStorage.setItem('watch-together-last-room', roomCode.trim().toUpperCase());
-                onJoinRoom(roomCode.trim().toUpperCase(), file, finalUsername);
-            } else if (mode === 'default') {
-                // Join default room
-                localStorage.setItem('watch-together-last-room', DEFAULT_ROOM_CODE);
-                onJoinRoom(DEFAULT_ROOM_CODE, file, finalUsername);
-            }
-
-        } else {
-            // Fallback to file input for web version
-            fileInputRef.current?.click();
-        }
+    const handleFileSelect = () => {
+        // Trigger file input for web version
+        fileInputRef.current?.click();
     };
 
     const handleWebFileSelect = (e) => {
