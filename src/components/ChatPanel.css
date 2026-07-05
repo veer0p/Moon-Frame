@@ -65,7 +65,7 @@
 
 @media (max-width: 768px) {
     .messages-container {
-        padding: var(--space-sm);
+        padding: var(--space-xs);
         gap: var(--space-xs);
     }
 }
@@ -141,7 +141,7 @@
 
 @media (max-width: 768px) {
     .chat-input-container {
-        padding: var(--space-sm);
+        padding: var(--space-xs);
         gap: var(--space-xs);
     }
 }
@@ -196,14 +196,15 @@
 
 @media (max-width: 768px) {
     .chat-input {
-        padding: var(--space-sm) var(--space-sm) var(--space-sm) 38px;
-        font-size: 16px;
+        padding: 8px 8px 8px 36px;
+        font-size: 14px;
         /* Prevents zoom on iOS */
         border-radius: var(--radius-md);
+        min-height: 36px;
     }
     .emoji-toggle-btn {
-        left: 8px;
-        font-size: 1.15rem;
+        left: 6px;
+        font-size: 1.1rem;
     }
 }
 
@@ -234,6 +235,14 @@
 @media (max-width: 768px) {
     .send-btn {
         border-radius: var(--radius-md);
+        width: 36px;
+        height: 36px;
+        min-width: 36px;
+        min-height: 36px;
+    }
+    .send-btn svg {
+        width: 16px;
+        height: 16px;
     }
 }
 

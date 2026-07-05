@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { Mic, MicOff, Trash2, Eye } from 'lucide-react';
 import './LiveKitOverlay.css';
 
 // Helper to render video tracks (camera or screen share) using HTML5 video tag
@@ -45,18 +46,25 @@ export function TrackAudio({ track }) {
 }
 
 // Draggable Bubble component
-function DraggableBubble({ p, userColor, hasCamera, getInitials, isLocal }) {
+function DraggableBubble({ p, userColor, hasCamera, getInitials, isLocal, layout }) {
     const [position, setPosition] = useState({ x: 0, y: 0 });
+    const [isHidden, setIsHidden] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
     const dragRef = useRef(null);
     const dragStartPos = useRef({ x: 0, y: 0 });
     const initialPos = useRef({ x: 0, y: 0 });
 
     const handlePointerDown = (e) => {
-        // Prevent drag if clicking inside buttons
-        if (e.target.tagName.toLowerCase() === 'button' || e.target.closest('.livekit-btn')) {
+        if (layout === 'grid') return;
+        
+        // Prevent drag if clicking inside buttons or on the resize handle (bottom right corner)
+        const rect = e.target.getBoundingClientRect();
+        const isResizeHandle = (e.clientX >= rect.right - 25) && (e.clientY >= rect.bottom - 25);
+        
+        if (e.target.tagName.toLowerCase() === 'button' || e.target.closest('.livekit-btn') || isResizeHandle) {
             return;
         }
+        
         setIsDragging(true);
         dragStartPos.current = { x: e.clientX, y: e.clientY };
         initialPos.current = { ...position };
@@ -64,6 +72,7 @@ function DraggableBubble({ p, userColor, hasCamera, getInitials, isLocal }) {
     };
 
     const handlePointerMove = (e) => {
+        if (layout === 'grid') return;
         if (!isDragging) return;
         const dx = e.clientX - dragStartPos.current.x;
         const dy = e.clientY - dragStartPos.current.y;
@@ -74,19 +83,40 @@ function DraggableBubble({ p, userColor, hasCamera, getInitials, isLocal }) {
     };
 
     const handlePointerUp = (e) => {
+        if (layout === 'grid') return;
         setIsDragging(false);
         e.target.releasePointerCapture(e.pointerId);
+        
+        // Hide if dropped in the bottom 20% of the screen
+        if (e.clientY > window.innerHeight * 0.8) {
+            setIsHidden(true);
+        }
+    };
+
+    if (isHidden) {
+        return (
+            <button className="livekit-restore-btn" onClick={() => setIsHidden(false)} title={`Show ${p.identity}`}>
+                <Eye size={16} />
+                <span className="livekit-bubble-name">{p.identity}</span>
+                {!isLocal && p.audioTrack && <TrackAudio track={p.audioTrack} />}
+            </button>
+        );
+    }
+
+    const wrapperStyle = layout === 'grid' ? {
+        cursor: 'default',
+        zIndex: 1
+    } : {
+        transform: `translate(${position.x}px, ${position.y}px)`,
+        cursor: isDragging ? 'grabbing' : 'grab',
+        zIndex: isDragging ? 100 : 1
     };
 
     return (
         <div 
             ref={dragRef}
-            className={`livekit-bubble-wrapper ${isDragging ? 'dragging' : ''}`}
-            style={{ 
-                transform: `translate(${position.x}px, ${position.y}px)`,
-                cursor: isDragging ? 'grabbing' : 'grab',
-                zIndex: isDragging ? 100 : 1
-            }}
+            className={`livekit-bubble-wrapper ${isDragging ? 'dragging' : ''} ${layout === 'grid' ? 'grid-bubble' : ''}`}
+            style={wrapperStyle}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
@@ -112,15 +142,7 @@ function DraggableBubble({ p, userColor, hasCamera, getInitials, isLocal }) {
 
                 {/* Mic status indicator */}
                 <div className={`livekit-bubble-mic-status ${p.participant.isMicrophoneEnabled ? 'on' : 'off'}`}>
-                    {p.participant.isMicrophoneEnabled ? (
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zM17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
-                        </svg>
-                    ) : (
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17l1.42 1.42C16.82 11.96 17 11.5 17 11c0-2.76-2.24-5-5-5-1.01 0-1.94.3-2.73.81l1.42 1.42C11.1 9.07 11.54 9 12 9c1.66 0 3 1.34 3 3 0 .43-.07.83-.17 1.17zM3.27 3L2 4.27l6.03 6.03v.7c0 2.76 2.24 5 5 5 .94 0 1.83-.26 2.58-.73l2.87 2.87 1.27-1.27L3.27 3zM12 18c-3.11 0-5.69-2.31-5.96-5.32l4.88 4.88c-.29.28-.6.37-.92.44v3h2v-3.08c.34-.05.67-.14.98-.28L12 18zm1.03-7.85l-3-3c-.1-.13-.17-.28-.17-.46C9.86 5.76 10.82 5 12 5c1.66 0 3 1.34 3 3v.77c0 .18-.08.33-.17.46l-1.8 1.8z" />
-                        </svg>
-                    )}
+                    {p.participant.isMicrophoneEnabled ? <Mic size={12} strokeWidth={2.5} /> : <MicOff size={12} strokeWidth={2.5} />}
                 </div>
             </div>
             <span className="livekit-bubble-name">
@@ -131,11 +153,19 @@ function DraggableBubble({ p, userColor, hasCamera, getInitials, isLocal }) {
             {!isLocal && p.audioTrack && (
                 <TrackAudio track={p.audioTrack} />
             )}
+            
+            {/* Drop zone overlay rendered globally when dragging */}
+            {isDragging && (
+                <div className="livekit-drop-zone glass">
+                    <Trash2 size={32} color="#ff4444" />
+                    <span>Drop here to hide camera</span>
+                </div>
+            )}
         </div>
     );
 }
 
-export default function LiveKitOverlay({ livekit, playerContainerRef, isInactive }) {
+export default function LiveKitOverlay({ livekit, playerContainerRef, isInactive, layout = 'floating' }) {
     const {
         participants,
         localParticipant,
@@ -212,18 +242,21 @@ export default function LiveKitOverlay({ livekit, playerContainerRef, isInactive
     // Check if anyone is screen sharing
     const screenShareUser = allParticipants.find(p => p.screenShareTrack);
 
+    const participantCount = allParticipants.length;
+    const countClass = participantCount > 6 ? 'participant-count-more' : `participant-count-${participantCount}`;
+
     if (connectionState === 'disconnected') return null;
 
     return (
         <div
             ref={overlayRef}
-            className="livekit-floating-overlay"
+            className={`livekit-floating-overlay ${layout === 'grid' ? 'meet-grid-layout' : ''}`}
         >
 
             {/* Content Panel */}
-            <div className="livekit-overlay-content">
+            <div className={`livekit-overlay-content ${layout === 'grid' ? 'grid-content' : ''}`}>
                 {/* Regular Webcams Row/Grid */}
-                <div className="livekit-bubbles-container">
+                <div className={`livekit-bubbles-container ${layout === 'grid' ? `grid-bubbles ${countClass}` : ''}`}>
                     {allParticipants.map((p) => {
                         const hasCamera = p.videoTrack && p.participant.isCameraEnabled;
                         const userColor = getUserColor(p.identity);
@@ -235,6 +268,7 @@ export default function LiveKitOverlay({ livekit, playerContainerRef, isInactive
                                 hasCamera={hasCamera}
                                 getInitials={getInitials}
                                 isLocal={p.isLocal}
+                                layout={layout}
                             />
                         );
                     })}

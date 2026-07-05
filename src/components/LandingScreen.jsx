@@ -146,22 +146,28 @@ function LandingScreen({ onCreateRoom, onJoinRoom, isGuest = false, onExitGuest 
         }
     };
 
-    const handleCreateClick = async () => {
-        setMode('create');
-        await handleFileSelect();
+    const handleCreateClick = () => {
+        const finalUsername = username.trim() || generateUsername();
+        localStorage.setItem('watch-together-username', finalUsername);
+        onCreateRoom(null, finalUsername);
     };
 
-    const handleJoinClick = async () => {
+    const handleJoinClick = () => {
         if (mode === 'join' && roomCode.trim()) {
-            await handleFileSelect();
+            const finalUsername = username.trim() || generateUsername();
+            localStorage.setItem('watch-together-username', finalUsername);
+            localStorage.setItem('watch-together-last-room', roomCode.trim().toUpperCase());
+            onJoinRoom(roomCode.trim().toUpperCase(), null, finalUsername);
         } else {
             setMode('join');
         }
     };
 
-    const handleDefaultRoomClick = async () => {
-        setMode('default');
-        await handleFileSelect();
+    const handleDefaultRoomClick = () => {
+        const finalUsername = username.trim() || generateUsername();
+        localStorage.setItem('watch-together-username', finalUsername);
+        localStorage.setItem('watch-together-last-room', DEFAULT_ROOM_CODE);
+        onJoinRoom(DEFAULT_ROOM_CODE, null, finalUsername);
     };
 
     const handleUsernameChange = (e) => {

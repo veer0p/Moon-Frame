@@ -28,6 +28,8 @@ function useInactivityTimer(elementRef, delay = 3000) {
         element.addEventListener('mousemove', handleActivity);
         element.addEventListener('mouseenter', handleActivity);
         element.addEventListener('click', handleActivity);
+        element.addEventListener('touchstart', handleActivity, { passive: true });
+        element.addEventListener('pointermove', handleActivity, { passive: true });
 
         return () => {
             if (timeoutRef.current) {
@@ -36,6 +38,8 @@ function useInactivityTimer(elementRef, delay = 3000) {
             element.removeEventListener('mousemove', handleActivity);
             element.removeEventListener('mouseenter', handleActivity);
             element.removeEventListener('click', handleActivity);
+            element.removeEventListener('touchstart', handleActivity);
+            element.removeEventListener('pointermove', handleActivity);
         };
     }, [elementRef, delay]);
 

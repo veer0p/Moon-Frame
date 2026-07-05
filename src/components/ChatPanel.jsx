@@ -56,10 +56,6 @@ function ChatPanel({ messages, onSendMessage, currentUsername, onEmojiReaction }
 
     return (
         <div className="chat-panel glass">
-            <div className="chat-header">
-                <h3>Chat</h3>
-                <span className="message-count">{messages.length}</span>
-            </div>
 
             <div className="messages-container">
                 {messages.length === 0 ? (

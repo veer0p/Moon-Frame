@@ -1,5 +1,5 @@
 .watch-room {
-    height: 100vh;
+    height: 100dvh; /* use dynamic viewport height for mobile browsers */
     /* Fixed height instead of min-height */
     overflow: hidden;
     /* Prevent page scroll */
@@ -151,7 +151,7 @@
 @media (max-width: 1024px) {
     .watch-content {
         grid-template-columns: 1fr;
-        grid-template-rows: 1fr auto;
+        grid-template-rows: 1fr;
         gap: var(--space-sm);
     }
 }
@@ -191,10 +191,6 @@
 
 /* Mobile: Stack layout with proper height distribution */
 @media (max-width: 1024px) {
-    .watch-content {
-        grid-template-rows: minmax(300px, 60vh) minmax(200px, 40vh);
-    }
-
     .sidebar {
         height: 100%;
         min-height: 200px;
@@ -237,5 +233,88 @@
 @media (max-width: 1024px) {
     .watch-room.sidebar-hidden .watch-content {
         grid-template-rows: 1fr !important;
+    }
+}
+/* Radix Tabs Styles */
+.tabs-root {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+}
+
+.tabs-list {
+    display: flex;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--glass-border);
+    margin-bottom: var(--space-sm);
+}
+
+.tabs-trigger {
+    background: transparent;
+    padding: var(--space-md);
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
+    font-size: var(--font-size-md);
+    color: var(--color-text-secondary);
+    border-bottom: 2px solid transparent;
+    transition: all var(--transition-base);
+    user-select: none;
+    font-weight: 500;
+}
+
+.tabs-trigger:hover {
+    color: var(--color-text-primary);
+}
+
+.tabs-trigger[data-state='active'] {
+    color: var(--accent-primary);
+    border-bottom-color: var(--accent-primary);
+}
+
+.tabs-content {
+    flex-grow: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.tabs-content[data-state='inactive'] {
+    display: none;
+}
+
+/* Floating Sidebar Styles (Mobile) */
+@media (max-width: 768px) {
+    .tabs-trigger {
+        padding: 6px;
+        font-size: 14px;
+    }
+
+    .sidebar.floating-mobile-sidebar {
+        position: fixed;
+        right: 16px;
+        top: 16px;
+        bottom: 72px; /* Just above the bottom controls */
+        height: auto;
+        width: 300px;
+        max-width: calc(100vw - 32px);
+        z-index: 100;
+        background: rgba(18, 18, 18, 0.85);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 12px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
+        transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+
+    .sidebar.floating-mobile-sidebar.hidden {
+        opacity: 0;
+        transform: translateY(20px) scale(0.95);
+        pointer-events: none;
     }
 }

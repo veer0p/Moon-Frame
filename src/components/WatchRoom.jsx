@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import VideoPlayer from './VideoPlayer';
 import ChatPanel from './ChatPanel';
 import SyncNotification from './SyncNotification';
@@ -13,6 +13,10 @@ import { useNotifications } from '../hooks/useNotifications';
 import { generateRoomCode } from '../utils/helpers';
 import { EmojiShower } from './EmojiTray';
 import { useEmojiReactions } from '../hooks/useEmojiReactions';
+import { useMediaQuery } from '../hooks/useMediaQuery';
+import * as Tabs from '@radix-ui/react-tabs';
+import { Drawer } from 'vaul';
+import { Users, MessageSquare } from 'lucide-react';
 import './WatchRoom.css';
 
 function WatchRoom({ roomId: initialRoomId, videoFile, onVideoFileSelect, username, onLeave }) {
@@ -20,13 +24,58 @@ function WatchRoom({ roomId: initialRoomId, videoFile, onVideoFileSelect, userna
     const [notification, setNotification] = useState(null);
     const [isCreatingRoom, setIsCreatingRoom] = useState(false);
     const [isFullscreenMode, setIsFullscreenMode] = useState(false);
-    const [showSidebar, setShowSidebar] = useState(true);
+    const [showSidebar, setShowSidebar] = useState(window.innerWidth > 1024);
+    const [unreadCount, setUnreadCount] = useState(0);
+    const [messagePreview, setMessagePreview] = useState(null);
 
     const { roomState, updateRoom, isConnected } = useRoom(roomCode, username, videoFile);
     const { messages, sendMessage } = useChat(roomCode);
     const { activeUsers, userCount } = usePresence(roomCode, username);
     const { success, warning, info } = useNotifications();
     const { showerEmojis, triggerShower } = useEmojiReactions(roomCode);
+    const isMobile = useMediaQuery('(max-width: 1024px)');
+    const sidebarRef = useRef(null);
+
+    // Track unread messages and previews
+    useEffect(() => {
+        if (!showSidebar && messages.length > 0) {
+            const lastMessage = messages[messages.length - 1];
+            if (lastMessage.username !== username) {
+                setUnreadCount(prev => prev + 1);
+                setMessagePreview(lastMessage);
+                const timer = setTimeout(() => setMessagePreview(null), 3000);
+                return () => clearTimeout(timer);
+            }
+        } else if (showSidebar) {
+            setUnreadCount(0);
+            setMessagePreview(null);
+        }
+    }, [messages, showSidebar, username]);
+
+    // Close sidebar on click outside (mobile behavior)
+    useEffect(() => {
+        if (!isMobile || !showSidebar) return;
+
+        const handleClickOutside = (e) => {
+            // Check if click is outside sidebar or on the toggle button
+            if (
+                sidebarRef.current && 
+                !sidebarRef.current.contains(e.target) &&
+                !e.target.closest('.chat-toggle-btn') &&
+                !e.target.closest('.chat-emoji-picker-popover') // don't close if clicking emoji picker
+            ) {
+                setShowSidebar(false);
+            }
+        };
+
+        // Use capture phase to ensure it runs before React's synthetic events might stop propagation
+        document.addEventListener('mousedown', handleClickOutside, true);
+        document.addEventListener('touchstart', handleClickOutside, true);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside, true);
+            document.removeEventListener('touchstart', handleClickOutside, true);
+        };
+    }, [isMobile, showSidebar]);
 
     // Create room if no roomId provided (user clicked "Create Room")
     useEffect(() => {
@@ -110,6 +159,8 @@ function WatchRoom({ roomId: initialRoomId, videoFile, onVideoFileSelect, userna
                         username={username}
                         userCount={userCount}
                         messages={messages}
+                        unreadCount={unreadCount}
+                        messagePreview={messagePreview}
                         onSendMessage={(text) => sendMessage(username, text)}
                         onEmojiReaction={triggerShower}
                         onFullscreenChange={(isFullscreen) => setIsFullscreenMode(isFullscreen)}
@@ -122,15 +173,38 @@ function WatchRoom({ roomId: initialRoomId, videoFile, onVideoFileSelect, userna
                     {notification && <SyncNotification message={notification} />}
                 </div>
 
-                <div className="sidebar">
-                    <UserList users={activeUsers} currentUsername={username} />
-                    <ChatPanel
-                        messages={messages}
-                        onSendMessage={(text) => sendMessage(username, text)}
-                        currentUsername={username}
-                        onEmojiReaction={triggerShower}
-                    />
-                </div>
+                {/* Sidebar Content rendered in Tabs */}
+                {(() => {
+                    const SidebarContent = (
+                        <Tabs.Root className="tabs-root" defaultValue="chat">
+                            <Tabs.List className="tabs-list">
+                                <Tabs.Trigger className="tabs-trigger" value="chat">
+                                    <MessageSquare size={16} /> Chat
+                                </Tabs.Trigger>
+                                <Tabs.Trigger className="tabs-trigger" value="users">
+                                    <Users size={16} /> Participants ({userCount})
+                                </Tabs.Trigger>
+                            </Tabs.List>
+                            <Tabs.Content className="tabs-content" value="chat">
+                                <ChatPanel
+                                    messages={messages}
+                                    onSendMessage={(text) => sendMessage(username, text)}
+                                    currentUsername={username}
+                                    onEmojiReaction={triggerShower}
+                                />
+                            </Tabs.Content>
+                            <Tabs.Content className="tabs-content" value="users">
+                                <UserList users={activeUsers} currentUsername={username} />
+                            </Tabs.Content>
+                        </Tabs.Root>
+                    );
+
+                    return (
+                        <div ref={sidebarRef} className={`sidebar ${!showSidebar ? 'hidden' : ''} ${isMobile ? 'floating-mobile-sidebar' : ''}`}>
+                            {SidebarContent}
+                        </div>
+                    );
+                })()}
             </div>
         </div>
     );

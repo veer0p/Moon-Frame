@@ -1,12 +1,16 @@
 import { useState, useRef, useEffect } from 'react';
 import ChatPanel from './ChatPanel';
 import SyncIndicator from './SyncIndicator';
+import { EmojiTray } from './EmojiTray';
 import useKeyboardShortcuts from '../hooks/useKeyboardShortcuts';
 import useInactivityTimer from '../hooks/useInactivityTimer';
 import { useVideoSync } from '../hooks/useVideoSync';
 import { useLiveKit } from '../hooks/useLiveKit';
 import LiveKitOverlay, { TrackVideo } from './LiveKitOverlay';
 import formatTime from '../utils/formatTime';
+import { Copy, Film, MessageSquare, LogOut, Play, Pause, Volume2, Volume1, VolumeX, Maximize, Minimize, Mic, MicOff, Video as VideoIcon, VideoOff, MonitorUp, PhoneOff, FastForward, Rewind, AlertCircle, Users, Plus } from 'lucide-react';
+import { Drawer } from 'vaul';
+import * as Tabs from '@radix-ui/react-tabs';
 import './VideoPlayer.css';
 
 function VideoPlayer({
@@ -17,6 +21,8 @@ function VideoPlayer({
     username,
     userCount = 1,
     messages = [],
+    unreadCount = 0,
+    messagePreview = null,
     onSendMessage,
     onEmojiReaction,
     onFullscreenChange,
@@ -35,6 +41,7 @@ function VideoPlayer({
     const [playbackRate, setPlaybackRate] = useState(1);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [buffered, setBuffered] = useState(0);
+    const [showEmojiTray, setShowEmojiTray] = useState(false);
     const [hasError, setHasError] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
     const [audioTracks, setAudioTracks] = useState([]);
@@ -47,6 +54,21 @@ function VideoPlayer({
     const [showMobileVolume, setShowMobileVolume] = useState(false); // Mobile volume overlay
     const [timeOffset, setTimeOffset] = useState(0); // Time offset for remuxed files (MKV etc.)
     const [preferScreenShare, setPreferScreenShare] = useState(true);
+
+
+
+    const volumeRef = useRef(volume);
+    const isMutedRef = useRef(isMuted);
+    const playbackRateRef = useRef(playbackRate);
+
+    // Keep refs in sync with state
+    useEffect(() => {
+        volumeRef.current = volume;
+        isMutedRef.current = isMuted;
+        playbackRateRef.current = playbackRate;
+    }, [volume, isMuted, playbackRate]);
+
+
 
     const containerRef = useRef(null);
     const feedbackTimeoutRef = useRef(null); // Track feedback timeout for debouncing
@@ -90,11 +112,7 @@ function VideoPlayer({
     const handleCopyRoomCode = () => {
         if (!roomCode) return;
         navigator.clipboard.writeText(roomCode);
-        triggerFeedback('copy', 'Room Code Copied!', (
-            <svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24">
-                <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
-            </svg>
-        ));
+        triggerFeedback('copy', 'Room Code Copied!', <Copy size={24} />);
     };
 
     const handleToggleChat = () => {
@@ -175,6 +193,16 @@ function VideoPlayer({
         }
     }, [videoFile]);
 
+    // Sync React states (volume, isMuted, playbackRate) with the video DOM element
+    useEffect(() => {
+        const video = videoRef.current;
+        if (video) {
+            video.volume = volume;
+            video.muted = isMuted;
+            video.playbackRate = playbackRate;
+        }
+    }, [volume, isMuted, playbackRate, videoFile]);
+
     useEffect(() => {
         const video = videoRef.current;
         if (!video) return;
@@ -188,6 +216,11 @@ function VideoPlayer({
         };
         const handleLoadedData = () => {
             console.log('Video loaded and ready to play');
+
+            // Apply volume, muted, and playbackRate from the refs to override browser default state resets
+            video.volume = volumeRef.current;
+            video.muted = isMutedRef.current;
+            video.playbackRate = playbackRateRef.current;
 
             // Detect audio tracks
             if (video.audioTracks && video.audioTracks.length > 0) {
@@ -306,16 +339,12 @@ function VideoPlayer({
                 console.error('Play error:', error);
             });
             // isPlaying state will be updated by 'play' event listener
-            triggerFeedback('play', null, (
-                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-            ));
+            triggerFeedback('play', null, <Play size={64} fill="currentColor" />);
             if (updateRoom) syncPlay();
         } else {
             video.pause();
             // isPlaying state will be updated by 'pause' event listener
-            triggerFeedback('pause', null, (
-                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
-            ));
+            triggerFeedback('pause', null, <Pause size={64} fill="currentColor" />);
             if (updateRoom) syncPause();
         }
     };
@@ -326,13 +355,21 @@ function VideoPlayer({
 
         // For remuxed files, seeking requires changing the src URL
         // FFmpeg restarts at the new position via ?t= parameter
-        if (videoFile?.needsRemux && videoFile?.filePath) {
+        if (videoFile?.needsRemux) {
             const seekTarget = amount ? (timeOffset + currentTime + amount) : time;
             const clampedTarget = Math.max(0, Math.min(seekTarget, (videoFile.mediaDuration || duration)));
             setTimeOffset(clampedTarget);
             setCurrentTime(0);
             setIsLoading(true);
-            const newUrl = `video://${videoFile.filePath}?t=${clampedTarget}`;
+            
+            let newUrl;
+            if (videoFile.previewUrl) {
+                const baseUrl = videoFile.previewUrl.split('&t=')[0];
+                newUrl = `${baseUrl}&t=${clampedTarget}`;
+            } else {
+                newUrl = `video://${videoFile.filePath}?t=${clampedTarget}`;
+            }
+            
             video.src = newUrl;
             video.load();
             if (isPlaying) {
@@ -354,15 +391,7 @@ function VideoPlayer({
             cumulativeSeekRef.current += amount;
             const totalSeek = Math.abs(cumulativeSeekRef.current);
             const isForward = cumulativeSeekRef.current > 0;
-            const icon = isForward ? (
-                <svg viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z" />
-                </svg>
-            ) : (
-                <svg viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z" />
-                </svg>
-            );
+            const icon = isForward ? <FastForward size={64} fill="currentColor" /> : <Rewind size={64} fill="currentColor" />;
             // Show cumulative total
             triggerFeedback('seek', `${totalSeek}s`, icon);
 
@@ -485,6 +514,105 @@ function VideoPlayer({
         }
     };
 
+    const handleSelectVideoFile = async (e) => {
+        if (window.electronAPI && window.electronAPI.selectVideo) {
+            try {
+                const filePath = await window.electronAPI.selectVideo();
+                if (!filePath) return;
+
+                const videoUrl = `video://${filePath}`;
+                const fileName = filePath.split(/[\\/]/).pop();
+                const ext = fileName.split('.').pop().toLowerCase();
+
+                const mimeTypes = {
+                    'mp4': 'video/mp4', 'm4v': 'video/mp4',
+                    'webm': 'video/webm',
+                    'ogg': 'video/ogg', 'ogv': 'video/ogg',
+                    'mov': 'video/quicktime',
+                    'avi': 'video/x-msvideo',
+                    'mkv': 'video/x-matroska',
+                    'flv': 'video/x-flv',
+                    'wmv': 'video/x-ms-wmv',
+                    'mpg': 'video/mpeg', 'mpeg': 'video/mpeg',
+                    '3gp': 'video/3gpp',
+                    'ts': 'video/mp2t', 'm2ts': 'video/mp2t',
+                };
+
+                let videoInfo = { duration: 0, needsRemux: false, videoCodec: 'unknown', audioCodec: 'unknown' };
+                if (window.electronAPI.getVideoInfo) {
+                    try {
+                        videoInfo = await window.electronAPI.getVideoInfo(filePath);
+                    } catch (err) {
+                        console.warn('Failed to get video info:', err);
+                    }
+                }
+
+                const file = {
+                    name: fileName,
+                    type: mimeTypes[ext] || 'video/mp4',
+                    size: 0,
+                    previewUrl: videoUrl,
+                    filePath: filePath,
+                    needsRemux: videoInfo.needsRemux || false,
+                    mediaDuration: videoInfo.duration || 0,
+                    videoCodec: videoInfo.videoCodec || 'unknown',
+                    audioCodec: videoInfo.audioCodec || 'unknown',
+                };
+
+                if (onVideoFileSelect) {
+                    onVideoFileSelect(file);
+                }
+            } catch (err) {
+                console.error("Error in Electron file select:", err);
+            }
+        } else {
+            const file = e?.target?.files?.[0];
+            if (file) {
+                // Fetch video details from local Vite dev server first
+                try {
+                    const response = await fetch(`/api/video-info?filename=${encodeURIComponent(file.name)}`);
+                    if (response.ok) {
+                        const info = await response.json();
+                        if (info.needsRemux) {
+                            const fileWithRemux = {
+                                name: file.name,
+                                type: file.type || 'video/mp4',
+                                size: file.size,
+                                previewUrl: `/api/transcode?filename=${encodeURIComponent(file.name)}`,
+                                filePath: file.name,
+                                needsRemux: true,
+                                mediaDuration: info.duration || 0,
+                                videoCodec: info.videoCodec || 'unknown',
+                                audioCodec: info.audioCodec || 'unknown',
+                                rawFile: file
+                            };
+                            console.log('Selected video file in browser requiring auto-remux:', fileWithRemux);
+                            if (onVideoFileSelect) {
+                                onVideoFileSelect(fileWithRemux);
+                            }
+                            return;
+                        }
+                    }
+                } catch (err) {
+                    console.warn('Vite video info API is not available (production/static mode). Falling back to native browser playback:', err);
+                }
+
+                if (onVideoFileSelect) {
+                    onVideoFileSelect(file);
+                }
+            }
+        }
+    };
+
+    const triggerFilePicker = () => {
+        if (window.electronAPI && window.electronAPI.selectVideo) {
+            handleSelectVideoFile();
+        } else {
+            const input = document.getElementById('room-video-picker-input');
+            if (input) input.click();
+        }
+    };
+
     useKeyboardShortcuts({
         onPlayPause: togglePlay,
         onStop: handleStop,
@@ -511,76 +639,82 @@ function VideoPlayer({
 
     return (
         <div ref={containerRef} className="video-player">
-            {videoFile && (
-                <div className={`video-controls-top glass ${isInactive ? 'hidden' : ''}`}>
-                    <div className="controls-top-left">
-                        <div className="room-code-badge" onClick={handleCopyRoomCode} title="Click to copy Room Code">
-                            <span className="room-code-label">Room:</span>
-                            <span className="room-code-val">{roomCode}</span>
-                            <svg className="copy-icon" viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
-                                <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
-                            </svg>
-                        </div>
-                        <SyncIndicator status={isConnected ? (isLoading ? 'syncing' : 'synced') : 'disconnected'} />
-                    </div>
-                    <div className="controls-top-right">
-                        <button
-                            className={`control-btn chat-toggle-btn ${((isFullscreen ? showChat : showSidebar)) ? 'active' : ''}`}
-                            onClick={handleToggleChat}
-                            aria-label="Toggle chat"
-                            title="Toggle Chat"
-                        >
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z" />
-                            </svg>
-                        </button>
-                        <button
-                            className="control-btn leave-btn-player"
-                            onClick={onLeave}
-                            aria-label="Leave room"
-                            title="Leave Room"
-                        >
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                                <polyline points="16 17 21 12 16 7" />
-                                <line x1="21" y1="12" x2="9" y2="12" />
-                            </svg>
-                            <span>Leave</span>
-                        </button>
-                    </div>
+            <input 
+                id="room-video-picker-input"
+                type="file" 
+                accept="video/mp4,video/webm,video/ogg,.mkv,.avi,.flv" 
+                onChange={handleSelectVideoFile} 
+                style={{ display: 'none' }} 
+            />
+
+            {messagePreview && !((isFullscreen ? showChat : showSidebar)) && (
+                <div className="message-preview-toast-screen">
+                    <span className="preview-user">{messagePreview.username}:</span> 
+                    <span className="preview-text">{messagePreview.text}</span>
                 </div>
             )}
 
-            {!videoFile && !hasError && (
+            <div className={`video-controls-top glass ${(isInactive && videoFile) ? 'hidden' : ''}`}>
+                <div className="controls-top-left">
+                    <div className="room-code-badge" onClick={handleCopyRoomCode} title="Click to copy Room Code">
+                        <span className="room-code-label">Room:</span>
+                        <span className="room-code-val">{roomCode}</span>
+                        <Copy className="copy-icon" size={14} />
+                    </div>
+                    {videoFile && <SyncIndicator status={isConnected ? (isLoading ? 'syncing' : 'synced') : 'disconnected'} />}
+                </div>
+                <div className="controls-top-right">
+                    {onVideoFileSelect && (
+                        <button
+                            className="control-btn change-video-btn"
+                            onClick={triggerFilePicker}
+                            aria-label={videoFile ? "Change video" : "Choose video"}
+                            title={videoFile ? "Change Video" : "Choose Video"}
+                            style={{ display: 'flex', alignItems: 'center', gap: '6px', width: 'auto', padding: '0 12px' }}
+                        >
+                            <Film size={18} />
+                            <span style={{ fontSize: '13px', fontWeight: '500' }}>{videoFile ? "Change Video" : "Choose Video"}</span>
+                        </button>
+                    )}
+                    <button
+                        className={`control-btn chat-toggle-btn ${((isFullscreen ? showChat : showSidebar)) ? 'active' : ''}`}
+                        onClick={handleToggleChat}
+                        aria-label="Toggle chat"
+                        title="Toggle Chat"
+                        style={{ position: 'relative' }}
+                    >
+                        <MessageSquare size={20} />
+                        {unreadCount > 0 && !((isFullscreen ? showChat : showSidebar)) && (
+                            <span className="unread-badge">{unreadCount}</span>
+                        )}
+                    </button>
+                    <button
+                        className="control-btn leave-btn-player"
+                        onClick={onLeave}
+                        aria-label="Leave room"
+                        title="Leave Room"
+                    >
+                        <LogOut size={20} />
+                        <span>Leave</span>
+                    </button>
+                </div>
+            </div>
+
+            {!videoFile && !hasError && connectionState === 'disconnected' && (
                 <div className="video-placeholder">
                     {onVideoFileSelect && (
-                        <label className="screenshare-toggle-btn glass" style={{ position: 'relative', top: '0', transform: 'none', margin: 'auto' }}>
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ marginRight: '8px', verticalAlign: 'middle' }}>
-                                <path d="M14.752 11.168L20.87 7.542C21.5291 7.15705 22.3589 7.14074 23.0341 7.49963C23.7092 7.85852 24.1167 8.53305 24.1 9.266V14.734C24.1167 15.467 23.7092 16.1415 23.0341 16.5004C22.3589 16.8593 21.5291 16.8429 20.87 16.458L14.752 12.832C14.1169 12.4632 13.7207 11.7923 13.7207 11.07C13.7207 10.3477 14.1169 9.67684 14.752 9.308V11.168Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                <path d="M2 6C2 4.89543 2.89543 4 4 4H12C13.1046 4 14 4.89543 14 6V18C14 19.1046 13.1046 20 12 20H4C2.89543 20 2 19.1046 2 18V6Z" stroke="currentColor" strokeWidth="2" />
-                            </svg>
+                        <button className="screenshare-toggle-btn glass" style={{ position: 'relative', top: '0', transform: 'none', margin: 'auto' }} onClick={triggerFilePicker}>
+                            <Film size={24} style={{ marginRight: '8px', verticalAlign: 'middle' }} />
                             Choose Local Video
-                            <input 
-                                type="file" 
-                                accept="video/mp4,video/webm,video/ogg,.mkv,.avi,.flv" 
-                                onChange={(e) => {
-                                    if (e.target.files && e.target.files[0]) {
-                                        onVideoFileSelect(e.target.files[0]);
-                                    }
-                                }} 
-                                style={{ display: 'none' }} 
-                            />
-                        </label>
+                        </button>
                     )}
                 </div>
             )}
 
+
             {hasError && (
                 <div className="video-error">
-                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none">
-                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
-                        <path d="M12 8V12M12 16H12.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    </svg>
+                    <AlertCircle size={64} />
                     <p>Unsupported Video Format</p>
                     <span>{errorMessage}</span>
                     <div className="supported-formats">
@@ -638,6 +772,7 @@ function VideoPlayer({
                 livekit={livekit}
                 playerContainerRef={containerRef}
                 isInactive={isInactive}
+                layout={videoFile ? 'floating' : 'grid'}
             />
 
             {isFullscreen && (
@@ -652,6 +787,41 @@ function VideoPlayer({
             )}
 
             <div className={`video-controls glass ${isInactive || !videoFile ? 'hidden' : ''}`}>
+                <div className="quick-emoji-bar">
+                    {['❤️', '😂', '😮', '👏', '🔥'].map(emoji => (
+                        <button 
+                            key={emoji} 
+                            className="quick-emoji-btn" 
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if (onEmojiReaction) onEmojiReaction(emoji);
+                            }}
+                            title={`Send ${emoji}`}
+                        >
+                            {emoji}
+                        </button>
+                    ))}
+                    <button
+                        className="quick-emoji-btn"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setShowEmojiTray(!showEmojiTray);
+                        }}
+                        title="More emojis"
+                    >
+                        <Plus size={20} />
+                    </button>
+                    
+                    {showEmojiTray && (
+                        <div className="emoji-tray-popover" onClick={(e) => e.stopPropagation()}>
+                            <EmojiTray onEmojiClick={(emoji) => {
+                                if (onEmojiReaction) onEmojiReaction(emoji);
+                                setShowEmojiTray(false);
+                            }} />
+                        </div>
+                    )}
+                </div>
+
                 <div className="timeline-container">
                     {(() => {
                         const effectiveTime = videoFile?.needsRemux ? timeOffset + currentTime : currentTime;
@@ -691,15 +861,7 @@ function VideoPlayer({
                             onClick={togglePlay}
                             aria-label={isPlaying ? "Pause video" : "Play video"}
                         >
-                            {isPlaying ? (
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
-                                </svg>
-                            ) : (
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M8 5v14l11-7z" />
-                                </svg>
-                            )}
+                            {isPlaying ? <Pause size={24} /> : <Play size={24} />}
                         </button>
 
                         <div className="volume-control">
@@ -713,17 +875,11 @@ function VideoPlayer({
                                 aria-label={isMuted ? "Unmute" : "Mute"}
                             >
                                 {isMuted || volume === 0 ? (
-                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                                        <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z" />
-                                    </svg>
+                                    <VolumeX size={24} />
                                 ) : volume < 0.5 ? (
-                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                                        <path d="M7 9v6h4l5 5V4l-5 5H7z" />
-                                    </svg>
+                                    <Volume1 size={24} />
                                 ) : (
-                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                                        <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
-                                    </svg>
+                                    <Volume2 size={24} />
                                 )}
                             </button>
 
@@ -816,15 +972,7 @@ function VideoPlayer({
                         </select>
 
                         <button className="control-btn" onClick={toggleFullscreen} aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}>
-                            {isFullscreen ? (
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" />
-                                </svg>
-                            ) : (
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
-                                </svg>
-                            )}
+                            {isFullscreen ? <Minimize size={24} /> : <Maximize size={24} />}
                         </button>
                     </div>
                 </div>
@@ -836,22 +984,7 @@ function VideoPlayer({
                         onClick={toggleMic}
                         title={isMicEnabled ? "Turn off microphone" : "Turn on microphone"}
                     >
-                        {isMicEnabled ? (
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                                <line x1="12" y1="19" x2="12" y2="23" />
-                                <line x1="8" y1="23" x2="16" y2="23" />
-                            </svg>
-                        ) : (
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <line x1="1" y1="1" x2="23" y2="23" />
-                                <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6" />
-                                <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23" />
-                                <line x1="12" y1="19" x2="12" y2="23" />
-                                <line x1="8" y1="23" x2="16" y2="23" />
-                            </svg>
-                        )}
+                        {isMicEnabled ? <Mic size={24} /> : <MicOff size={24} />}
                     </button>
 
                     <button
@@ -859,17 +992,7 @@ function VideoPlayer({
                         onClick={toggleCamera}
                         title={isCamEnabled ? "Turn off camera" : "Turn on camera"}
                     >
-                        {isCamEnabled ? (
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <polygon points="23 7 16 12 23 17 23 7" />
-                                <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
-                            </svg>
-                        ) : (
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10" />
-                                <line x1="1" y1="1" x2="23" y2="23" />
-                            </svg>
-                        )}
+                        {isCamEnabled ? <VideoIcon size={24} /> : <VideoOff size={24} />}
                     </button>
 
                     <button
@@ -877,22 +1000,25 @@ function VideoPlayer({
                         onClick={toggleScreenShare}
                         title={isScreenSharing ? "Stop presenting" : "Present now"}
                     >
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
-                            <line x1="8" y1="21" x2="16" y2="21" />
-                            <line x1="12" y1="17" x2="12" y2="21" />
-                        </svg>
+                        <MonitorUp size={24} />
                     </button>
+                    
+                    {onVideoFileSelect && (
+                        <button
+                            className="meeting-btn select-video-lk"
+                            onClick={triggerFilePicker}
+                            title={videoFile ? "Change Video File" : "Choose Video File"}
+                        >
+                            <Film size={24} />
+                        </button>
+                    )}
                     
                     <button
                         className="meeting-btn call-end"
                         onClick={() => { disconnect(); if(onLeave) onLeave(); }}
                         title="Leave call"
                     >
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91" />
-                            <line x1="23" y1="1" x2="1" y2="23" />
-                        </svg>
+                        <PhoneOff size={24} />
                     </button>
             </div>
         </div >
