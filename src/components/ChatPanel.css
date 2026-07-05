@@ -97,11 +97,46 @@
     font-size: var(--font-size-sm);
 }
 
+.chat-footer {
+    border-top: 1px solid var(--glass-border);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+.chat-emoji-picker-popover {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    right: var(--space-md);
+    left: var(--space-md);
+    z-index: 100;
+    display: flex;
+    justify-content: center;
+    background: rgba(15, 15, 15, 0.95);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-sm);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+    animation: slideUpFade 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes slideUpFade {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 .chat-input-container {
     display: flex;
     gap: var(--space-sm);
     padding: var(--space-md);
-    border-top: 1px solid var(--glass-border);
+    position: relative;
 }
 
 @media (max-width: 768px) {
@@ -111,9 +146,41 @@
     }
 }
 
-.chat-input {
+.chat-input-wrapper {
+    position: relative;
     flex: 1;
-    padding: var(--space-md);
+    display: flex;
+    align-items: center;
+}
+
+.emoji-toggle-btn {
+    position: absolute;
+    left: 12px;
+    background: none;
+    border: none;
+    font-size: 1.3rem;
+    cursor: pointer;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    user-select: none;
+}
+
+.emoji-toggle-btn:hover {
+    transform: scale(1.2);
+}
+
+.emoji-toggle-btn:active {
+    transform: scale(0.9);
+}
+
+.chat-input {
+    width: 100%;
+    padding: var(--space-md) var(--space-md) var(--space-md) 44px;
     background: var(--color-bg-elevated);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-lg);
@@ -122,15 +189,21 @@
     transition: border-color var(--transition-base);
     resize: none;
     min-height: 44px;
-    /* Touch-friendly minimum */
+    box-sizing: border-box;
+    position: relative;
+    z-index: 1;
 }
 
 @media (max-width: 768px) {
     .chat-input {
-        padding: var(--space-sm);
+        padding: var(--space-sm) var(--space-sm) var(--space-sm) 38px;
         font-size: 16px;
         /* Prevents zoom on iOS */
         border-radius: var(--radius-md);
+    }
+    .emoji-toggle-btn {
+        left: 8px;
+        font-size: 1.15rem;
     }
 }
 
@@ -176,4 +249,14 @@
 .send-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+}
+
+/* Strip duplicate borders and background for the popover emoji tray */
+.chat-emoji-picker-popover .emoji-tray {
+    background: transparent;
+    border: none;
+    backdrop-filter: none;
+    padding: 0;
+    box-shadow: none;
+    gap: var(--space-xs);
 }

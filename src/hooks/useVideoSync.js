@@ -36,16 +36,18 @@ export const useVideoSync = (videoRef, roomState, updateRoom, username, userCoun
         }
 
         // Sync playback state
-        if (roomState.is_playing && video.paused) {
-            console.log('useVideoSync: Playing video');
-            video.play().catch(err => console.error('Play error:', err));
-        } else if (!roomState.is_playing && !video.paused) {
-            console.log('useVideoSync: Pausing video');
-            video.pause();
+        if (roomState.is_playing !== undefined) {
+            if (roomState.is_playing && video.paused) {
+                console.log('useVideoSync: Playing video');
+                video.play().catch(err => console.error('Play error:', err));
+            } else if (!roomState.is_playing && !video.paused) {
+                console.log('useVideoSync: Pausing video');
+                video.pause();
+            }
         }
 
         // Sync playback rate
-        if (video.playbackRate !== roomState.playback_rate) {
+        if (roomState.playback_rate !== undefined && video.playbackRate !== roomState.playback_rate) {
             console.log('useVideoSync: Changing playback rate', { from: video.playbackRate, to: roomState.playback_rate });
             video.playbackRate = roomState.playback_rate;
         }

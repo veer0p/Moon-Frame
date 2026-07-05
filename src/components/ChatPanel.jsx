@@ -1,10 +1,14 @@
 import { useState, useRef, useEffect } from 'react';
 import ChatMessage from './ChatMessage';
+import { EmojiTray } from './EmojiTray';
 import './ChatPanel.css';
 
-function ChatPanel({ messages, onSendMessage, currentUsername }) {
+function ChatPanel({ messages, onSendMessage, currentUsername, onEmojiReaction }) {
     const [inputValue, setInputValue] = useState('');
+    const [showEmojiPicker, setShowEmojiPicker] = useState(false);
     const messagesEndRef = useRef(null);
+    const emojiPickerRef = useRef(null);
+    const toggleButtonRef = useRef(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -14,11 +18,32 @@ function ChatPanel({ messages, onSendMessage, currentUsername }) {
         scrollToBottom();
     }, [messages]);
 
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (
+                emojiPickerRef.current && 
+                !emojiPickerRef.current.contains(event.target) &&
+                toggleButtonRef.current &&
+                !toggleButtonRef.current.contains(event.target)
+            ) {
+                setShowEmojiPicker(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        document.addEventListener('touchstart', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('touchstart', handleClickOutside);
+        };
+    }, []);
+
     const handleSubmit = (e) => {
         e.preventDefault();
         if (inputValue.trim()) {
             onSendMessage(inputValue.trim());
             setInputValue('');
+            setShowEmojiPicker(false);
         }
     };
 
@@ -64,25 +89,49 @@ function ChatPanel({ messages, onSendMessage, currentUsername }) {
                 )}
             </div>
 
-            <form className="chat-input-container" onSubmit={handleSubmit}>
-                <input
-                    type="text"
-                    className="chat-input"
-                    placeholder="Type a message..."
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                />
-                <button
-                    type="submit"
-                    className="send-btn"
-                    disabled={!inputValue.trim()}
-                >
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                        <path d="M18 2L9 11M18 2L12 18L9 11M18 2L2 8L9 11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                </button>
-            </form>
+            <div className="chat-footer">
+                {showEmojiPicker && onEmojiReaction && (
+                    <div ref={emojiPickerRef} className="chat-emoji-picker-popover">
+                        <EmojiTray onEmojiClick={onEmojiReaction} />
+                    </div>
+                )}
+                <form className="chat-input-container" onSubmit={handleSubmit}>
+                    <div className="chat-input-wrapper">
+                        <input
+                            type="text"
+                            className="chat-input"
+                            placeholder="Type a message..."
+                            value={inputValue}
+                            onChange={(e) => setInputValue(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                        />
+                        <button
+                            ref={toggleButtonRef}
+                            type="button"
+                            className="emoji-toggle-btn"
+                            onClick={() => setShowEmojiPicker(prev => !prev)}
+                            title="Insert Emoji"
+                            aria-label="Toggle emoji picker"
+                        >
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="12" cy="12" r="10" />
+                                <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+                                <line x1="9" y1="9" x2="9.01" y2="9" />
+                                <line x1="15" y1="9" x2="15.01" y2="9" />
+                            </svg>
+                        </button>
+                    </div>
+                    <button
+                        type="submit"
+                        className="send-btn"
+                        disabled={!inputValue.trim()}
+                    >
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                            <path d="M18 2L9 11M18 2L12 18L9 11M18 2L2 8L9 11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                    </button>
+                </form>
+            </div>
         </div>
     );
 }

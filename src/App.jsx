@@ -9,35 +9,50 @@ import './index.css';
 function AppContent() {
   const { user, loading } = useAuth();
   const [authMode, setAuthMode] = useState('login'); // 'login' | 'signup'
-  const [screen, setScreen] = useState('landing'); // 'landing' | 'watch'
-  const [roomId, setRoomId] = useState(null);
+  const [screen, setScreen] = useState(() => sessionStorage.getItem('screen') || 'landing'); // 'landing' | 'watch'
+  const [roomId, setRoomId] = useState(() => sessionStorage.getItem('roomId') || null);
   const [videoFile, setVideoFile] = useState(null);
-  const [username, setUsername] = useState('');
+  const [username, setUsername] = useState(() => sessionStorage.getItem('username') || '');
+  const [isGuest, setIsGuest] = useState(false);
 
   if (loading) {
     return <div className="loading-screen">Loading...</div>;
   }
 
-  if (!user) {
+  const showLanding = user || isGuest || screen === 'watch';
+
+  if (!showLanding) {
     return authMode === 'login' ? (
-      <Login onToggleMode={() => setAuthMode('signup')} />
+      <Login 
+        onToggleMode={() => setAuthMode('signup')} 
+        onContinueAsGuest={() => setIsGuest(true)}
+      />
     ) : (
-      <Signup onToggleMode={() => setAuthMode('login')} />
+      <Signup 
+        onToggleMode={() => setAuthMode('login')} 
+        onContinueAsGuest={() => setIsGuest(true)}
+      />
     );
   }
 
-  const handleCreateRoom = (file, user) => {
+  const handleCreateRoom = (file, userStr) => {
     setRoomId(null); // Will be created in WatchRoom
     setVideoFile(file);
-    setUsername(user);
+    setUsername(userStr);
     setScreen('watch');
+    sessionStorage.setItem('username', userStr);
+    sessionStorage.setItem('screen', 'watch');
+    sessionStorage.removeItem('roomId');
   };
 
-  const handleJoinRoom = (id, file, user) => {
+  const handleJoinRoom = (id, file, userStr) => {
     setRoomId(id);
     setVideoFile(file);
-    setUsername(user);
+    setUsername(userStr);
     setScreen('watch');
+    sessionStorage.setItem('roomId', id);
+    sessionStorage.setItem('username', userStr);
+    sessionStorage.setItem('screen', 'watch');
   };
 
   const handleLeaveRoom = () => {
@@ -45,6 +60,9 @@ function AppContent() {
     setRoomId(null);
     setVideoFile(null);
     setUsername('');
+    sessionStorage.removeItem('roomId');
+    sessionStorage.removeItem('username');
+    sessionStorage.setItem('screen', 'landing');
   };
 
   return (
@@ -53,12 +71,15 @@ function AppContent() {
         <LandingScreen
           onCreateRoom={handleCreateRoom}
           onJoinRoom={handleJoinRoom}
+          isGuest={isGuest}
+          onExitGuest={() => setIsGuest(false)}
         />
       )}
       {screen === 'watch' && (
         <WatchRoom
           roomId={roomId}
           videoFile={videoFile}
+          onVideoFileSelect={setVideoFile}
           username={username}
           onLeave={handleLeaveRoom}
         />
@@ -66,6 +87,7 @@ function AppContent() {
     </>
   );
 }
+
 
 function App() {
   return (

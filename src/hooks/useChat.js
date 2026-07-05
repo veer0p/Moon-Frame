@@ -57,26 +57,42 @@ export const useChat = (roomCode) => {
     }, [roomCode]);
 
     const sendMessage = useCallback(async (username, text) => {
-        if (!roomCode || !text.trim() || !user) return;
+        if (!roomCode || !text.trim()) return;
 
-        // Insert into database
-        const { data, error } = await supabase
-            .from('messages')
-            .insert({
+        let data = null;
+
+        if (user) {
+            // Insert into database
+            const { data: dbData, error } = await supabase
+                .from('messages')
+                .insert({
+                    room_code: roomCode,
+                    username,
+                    message: text.trim(),
+                    user_id: user.id
+                })
+                .select()
+                .single();
+
+            if (error) {
+                console.error('useChat: Error sending message:', error);
+            } else {
+                console.log('useChat: Message saved to database');
+                data = dbData;
+            }
+        }
+
+        // Fallback for guest mode / database insertion error
+        if (!data) {
+            data = {
+                id: Math.random().toString(36).substr(2, 9),
                 room_code: roomCode,
                 username,
                 message: text.trim(),
-                user_id: user.id
-            })
-            .select()
-            .single();
-
-        if (error) {
-            console.error('useChat: Error sending message:', error);
-            return;
+                created_at: new Date().toISOString(),
+                user_id: null
+            };
         }
-
-        console.log('useChat: Message saved to database');
 
         // Add message to local state immediately
         setMessages((prev) => [...prev, data]);
@@ -91,6 +107,7 @@ export const useChat = (roomCode) => {
 
         console.log('useChat: ✅ Message broadcast sent');
     }, [roomCode, user]);
+
 
     return { messages, sendMessage };
 };
