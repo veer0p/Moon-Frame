@@ -8,7 +8,7 @@ import { useVideoSync } from '../hooks/useVideoSync';
 import { useLiveKit } from '../hooks/useLiveKit';
 import LiveKitOverlay, { TrackVideo } from './LiveKitOverlay';
 import formatTime from '../utils/formatTime';
-import { Copy, Film, MessageSquare, LogOut, Play, Pause, Volume2, Volume1, VolumeX, Maximize, Minimize, Mic, MicOff, Video as VideoIcon, VideoOff, MonitorUp, PhoneOff, FastForward, Rewind, AlertCircle, Users, Plus } from 'lucide-react';
+import { Copy, Film, MessageSquare, LogOut, Play, Pause, Volume2, Volume1, VolumeX, Maximize, Minimize, Mic, MicOff, Video as VideoIcon, VideoOff, MonitorUp, PhoneOff, FastForward, Rewind, AlertCircle, Users, Plus, AudioWaveform } from 'lucide-react';
 import { Drawer } from 'vaul';
 import * as Tabs from '@radix-ui/react-tabs';
 import './VideoPlayer.css';
@@ -100,6 +100,7 @@ function VideoPlayer({
         disconnect,
         connectionState,
         connect,
+        noiseSuppression,
         error: livekitError
     } = livekit;
 
@@ -999,6 +1000,14 @@ function VideoPlayer({
                         title={isMicEnabled ? "Turn off microphone" : "Turn on microphone"}
                     >
                         {isMicEnabled ? <Mic size={24} /> : <MicOff size={24} />}
+                    </button>
+
+                    <button
+                        className={`meeting-btn noise-suppression-btn ${noiseSuppression?.isEnabled ? 'active-lk' : 'disabled-lk'}`}
+                        onClick={noiseSuppression?.toggle}
+                        title={noiseSuppression?.isEnabled ? 'Disable noise suppression' : 'Enable noise suppression'}
+                    >
+                        <AudioWaveform size={24} />
                     </button>
 
                     <button

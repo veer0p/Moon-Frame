@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Room, RoomEvent } from 'livekit-client';
+import { Room, RoomEvent, Track } from 'livekit-client';
 import { supabase } from '../lib/supabase';
+import { useNoiseSuppression } from './useNoiseSuppression';
 
 const LIVEKIT_URL = import.meta.env.VITE_LIVEKIT_URL || 'wss://livekit.viransi.in';
 
@@ -12,6 +13,10 @@ export const useLiveKit = (roomCode, username) => {
     const [isMicEnabled, setIsMicEnabled] = useState(false);
     const [isCamEnabled, setIsCamEnabled] = useState(false);
     const [isScreenSharing, setIsScreenSharing] = useState(false);
+    const [error, setError] = useState(null);
+
+    // Noise suppression
+    const { isEnabled: isNoiseSuppressionEnabled, isProcessing: isNoiseProcessing, processStream, cleanup: cleanupNoise, toggle: toggleNoise } = useNoiseSuppression();
 
     // Keep active room in a ref for cleanup
     const activeRoomRef = useRef(null);
@@ -23,6 +28,7 @@ export const useLiveKit = (roomCode, username) => {
             activeRoom.disconnect();
             activeRoomRef.current = null;
         }
+        cleanupNoise();
         setRoom(null);
         setParticipants([]);
         setLocalParticipant(null);
@@ -30,7 +36,7 @@ export const useLiveKit = (roomCode, username) => {
         setIsMicEnabled(false);
         setIsCamEnabled(false);
         setIsScreenSharing(false);
-    }, []);
+    }, [cleanupNoise]);
 
     const connect = useCallback(async () => {
         if (!roomCode || !username) return;
@@ -40,6 +46,7 @@ export const useLiveKit = (roomCode, username) => {
 
         console.log(`useLiveKit: Connecting user ${username} to room ${roomCode}...`);
         setConnectionState('connecting');
+        setError(null);
 
         try {
             // Get user session to pass authenticated token to function if logged in
@@ -111,6 +118,7 @@ export const useLiveKit = (roomCode, username) => {
 
         } catch (err) {
             console.error('useLiveKit: Failed to connect:', err);
+            setError(err.message || "Failed to connect to LiveKit");
             setConnectionState('disconnected');
             activeRoomRef.current = null;
         }
@@ -121,12 +129,44 @@ export const useLiveKit = (roomCode, username) => {
         if (!activeRoom || !activeRoom.localParticipant) return;
         try {
             const nextState = !isMicEnabled;
-            await activeRoom.localParticipant.setMicrophoneEnabled(nextState);
+
+            if (nextState && isNoiseSuppressionEnabled) {
+                // When turning mic ON with noise suppression:
+                // 1. Get raw mic stream
+                // 2. Process it through noise suppression pipeline
+                // 3. Publish the processed track
+                const rawStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,   // Browser-level first pass
+                        autoGainControl: true,
+                    }
+                });
+
+                const processedStream = await processStream(rawStream);
+                const processedTrack = processedStream.getAudioTracks()[0];
+
+                if (processedTrack) {
+                    await activeRoom.localParticipant.publishTrack(processedTrack, {
+                        name: 'microphone',
+                        source: Track.Source.Microphone,
+                    });
+                    console.log('useLiveKit: Published noise-suppressed mic track');
+                }
+            } else if (nextState) {
+                // No noise suppression, use default LiveKit mic
+                await activeRoom.localParticipant.setMicrophoneEnabled(true);
+            } else {
+                // Turning mic OFF
+                cleanupNoise();
+                await activeRoom.localParticipant.setMicrophoneEnabled(false);
+            }
+
             setIsMicEnabled(nextState);
         } catch (err) {
             console.error('useLiveKit: Failed to toggle mic:', err);
         }
-    }, [isMicEnabled]);
+    }, [isMicEnabled, isNoiseSuppressionEnabled, processStream, cleanupNoise]);
 
     const toggleCamera = useCallback(async () => {
         const activeRoom = activeRoomRef.current;
@@ -168,6 +208,7 @@ export const useLiveKit = (roomCode, username) => {
         participants,
         localParticipant,
         connectionState,
+        error,
         isMicEnabled,
         isCamEnabled,
         isScreenSharing,
@@ -175,6 +216,11 @@ export const useLiveKit = (roomCode, username) => {
         disconnect,
         toggleMic,
         toggleCamera,
-        toggleScreenShare
+        toggleScreenShare,
+        noiseSuppression: {
+            isEnabled: isNoiseSuppressionEnabled,
+            isProcessing: isNoiseProcessing,
+            toggle: toggleNoise,
+        }
     };
 };

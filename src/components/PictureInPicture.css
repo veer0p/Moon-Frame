@@ -1,0 +1,289 @@
+/* ==========================================
+   Picture-in-Picture Floating Window
+   ========================================== */
+
+.pip-container {
+    position: fixed;
+    z-index: 9999;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #111115;
+    box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.6),
+        0 0 0 1px rgba(255, 255, 255, 0.1),
+        0 0 60px rgba(168, 85, 247, 0.08);
+    cursor: grab;
+    user-select: none;
+    transition: box-shadow 0.3s ease, border-radius 0.3s ease;
+    animation: pipSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes pipSlideIn {
+    from {
+        opacity: 0;
+        transform: scale(0.85) translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.pip-container:hover {
+    box-shadow:
+        0 12px 48px rgba(0, 0, 0, 0.7),
+        0 0 0 1px rgba(168, 85, 247, 0.3),
+        0 0 80px rgba(168, 85, 247, 0.12);
+}
+
+.pip-container.dragging {
+    cursor: grabbing;
+    box-shadow:
+        0 20px 60px rgba(0, 0, 0, 0.8),
+        0 0 0 2px rgba(168, 85, 247, 0.5),
+        0 0 100px rgba(168, 85, 247, 0.15);
+    transition: box-shadow 0.15s ease;
+}
+
+.pip-container.resizing {
+    cursor: nwse-resize;
+    transition: none;
+}
+
+/* Video content */
+.pip-video-content {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+    border-radius: 12px;
+}
+
+.pip-video-content .livekit-video-stream {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* Avatar placeholder for when camera is off */
+.pip-avatar-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #1a1a2e, #16213e);
+    font-size: 2rem;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.8);
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    letter-spacing: 2px;
+}
+
+/* Name label at bottom */
+.pip-name-label {
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: calc(100% - 16px);
+    z-index: 3;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+
+/* Controls overlay */
+.pip-controls {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, 0.7) 0%,
+        transparent 40%,
+        transparent 100%
+    );
+    opacity: 0;
+    transition: opacity 0.25s ease;
+    z-index: 5;
+    pointer-events: none;
+    border-radius: 12px;
+}
+
+.pip-controls.visible,
+.pip-container:hover .pip-controls {
+    opacity: 1;
+}
+
+.pip-controls-top {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    padding: 8px 8px 0;
+    pointer-events: auto;
+}
+
+/* Control buttons */
+.pip-control-btn {
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(32, 33, 36, 0.85);
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    backdrop-filter: blur(4px);
+}
+
+.pip-control-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: scale(1.1);
+}
+
+.pip-control-btn:active {
+    transform: scale(0.95);
+}
+
+.pip-close-btn:hover {
+    background: rgba(239, 68, 68, 0.8);
+}
+
+/* Resize handles - invisible zones */
+.pip-resize-handle {
+    position: absolute;
+    z-index: 10;
+}
+
+/* Edge handles */
+.pip-resize-n {
+    top: -3px;
+    left: 8px;
+    right: 8px;
+    height: 6px;
+    cursor: n-resize;
+}
+
+.pip-resize-s {
+    bottom: -3px;
+    left: 8px;
+    right: 8px;
+    height: 6px;
+    cursor: s-resize;
+}
+
+.pip-resize-e {
+    right: -3px;
+    top: 8px;
+    bottom: 8px;
+    width: 6px;
+    cursor: e-resize;
+}
+
+.pip-resize-w {
+    left: -3px;
+    top: 8px;
+    bottom: 8px;
+    width: 6px;
+    cursor: w-resize;
+}
+
+/* Corner handles */
+.pip-resize-ne {
+    top: -3px;
+    right: -3px;
+    width: 14px;
+    height: 14px;
+    cursor: ne-resize;
+}
+
+.pip-resize-nw {
+    top: -3px;
+    left: -3px;
+    width: 14px;
+    height: 14px;
+    cursor: nw-resize;
+}
+
+.pip-resize-se {
+    bottom: -3px;
+    right: -3px;
+    width: 14px;
+    height: 14px;
+    cursor: se-resize;
+}
+
+.pip-resize-sw {
+    bottom: -3px;
+    left: -3px;
+    width: 14px;
+    height: 14px;
+    cursor: sw-resize;
+}
+
+/* Visual resize indicator (bottom-right grip) */
+.pip-resize-indicator {
+    position: absolute;
+    bottom: 4px;
+    right: 4px;
+    z-index: 4;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    pointer-events: none;
+}
+
+.pip-container:hover .pip-resize-indicator {
+    opacity: 1;
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+    .pip-container {
+        border-radius: 10px;
+    }
+
+    .pip-control-btn {
+        width: 32px;
+        height: 32px;
+    }
+
+    .pip-name-label {
+        font-size: 11px;
+        padding: 2px 8px;
+    }
+
+    .pip-resize-handle {
+        /* Bigger touch targets on mobile */
+    }
+
+    .pip-resize-n,
+    .pip-resize-s {
+        height: 10px;
+    }
+
+    .pip-resize-e,
+    .pip-resize-w {
+        width: 10px;
+    }
+
+    .pip-resize-ne,
+    .pip-resize-nw,
+    .pip-resize-se,
+    .pip-resize-sw {
+        width: 20px;
+        height: 20px;
+    }
+}

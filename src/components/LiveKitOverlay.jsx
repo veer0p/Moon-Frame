@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Mic, MicOff, Trash2, Eye } from 'lucide-react';
+import { Mic, MicOff, Trash2, Eye, PictureInPicture2 } from 'lucide-react';
+import PictureInPicture from './PictureInPicture';
 import './LiveKitOverlay.css';
 
 // Helper to render video tracks (camera or screen share) using HTML5 video tag
@@ -52,7 +53,7 @@ export function TrackAudio({ track, volume = 1.0 }) {
 }
 
 // Draggable Bubble component
-function DraggableBubble({ p, userColor, hasCamera, getInitials, isLocal, layout, voiceVolume, onHide }) {
+function DraggableBubble({ p, userColor, hasCamera, getInitials, isLocal, layout, voiceVolume, onHide, onPip }) {
     const [position, setPosition] = useState({ x: 0, y: 0 });
     const [isDragging, setIsDragging] = useState(false);
     const dragRef = useRef(null);
@@ -140,6 +141,17 @@ function DraggableBubble({ p, userColor, hasCamera, getInitials, isLocal, layout
                 <div className={`livekit-bubble-mic-status ${p.participant.isMicrophoneEnabled ? 'on' : 'off'}`}>
                     {p.participant.isMicrophoneEnabled ? <Mic size={12} strokeWidth={2.5} /> : <MicOff size={12} strokeWidth={2.5} />}
                 </div>
+
+                {/* PiP button - only for remote participants with camera */}
+                {!isLocal && onPip && (
+                    <button
+                        className="livekit-pip-btn"
+                        onClick={(e) => { e.stopPropagation(); onPip(p); }}
+                        title="Picture in Picture"
+                    >
+                        <PictureInPicture2 size={14} />
+                    </button>
+                )}
             </div>
             <span className="livekit-bubble-name">
                 {p.identity} {isLocal && '(You)'}
@@ -178,6 +190,7 @@ export default function LiveKitOverlay({ livekit, playerContainerRef, isInactive
 
     const overlayRef = useRef(null);
     const [hiddenBubbles, setHiddenBubbles] = useState(new Set());
+    const [pipParticipant, setPipParticipant] = useState(null);
 
     const hideBubble = useCallback((identity) => {
         setHiddenBubbles(prev => new Set([...prev, identity]));
@@ -280,6 +293,7 @@ export default function LiveKitOverlay({ livekit, playerContainerRef, isInactive
                                 layout={layout}
                                 voiceVolume={voiceVolume}
                                 onHide={() => hideBubble(p.identity)}
+                                onPip={!p.isLocal ? (participant) => setPipParticipant(participant) : undefined}
                             />
                         );
                     })}
@@ -298,6 +312,15 @@ export default function LiveKitOverlay({ livekit, playerContainerRef, isInactive
                     </div>
                 )}
             </div>
+
+            {/* Picture-in-Picture floating window */}
+            {pipParticipant && (
+                <PictureInPicture
+                    participant={pipParticipant}
+                    onClose={() => setPipParticipant(null)}
+                    voiceVolume={voiceVolume}
+                />
+            )}
         </div>
     );
 }
